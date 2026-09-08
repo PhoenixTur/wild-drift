@@ -3,6 +3,7 @@
 #include "InputKeyEventArgs.h"
 #include "GenericPlatform/GenericPlatformInputDeviceMapper.h"
 #include "HighResScreenshot.h"
+#include "Components/SceneComponent.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformMisc.h"
 // This integration check drives the real PlayerController input path and the real JSON save/load code.
@@ -22,6 +23,12 @@ void AWildDriftGameMode::VerifyInput(){
  if(VerifyStage==5&&T>5.5){if(!Require(!Paused,TEXT("Escape did not resume")))return;Race.place(P,60,0);Race.place(Race.racers[1],90,0);P.item=drift::Item::Soul;VerifyStage++;}
  if(VerifyStage==6&&T>6){if(!Require(Race.aim()>=0,TEXT("target reticle did not acquire a rival")))return;Capture(TEXT("NativeHeldItem"));VerifyStage++;}
  if(VerifyStage==7&&T>6.6){if(!Require(P.item==drift::Item::None&&(!Race.projectiles.empty()||Race.hits>0),TEXT("Shift did not throw")))return;VerifyStage++;}
- if(VerifyStage==8&&T>7.2){Capture(TEXT("NativeControls"));UE_LOG(LogTemp,Display,TEXT("WILDDRIFT_INPUT_OK throttle, steering, respawn, rear view, pause, aim, throw and profile persistence"));VerifyStage++;}
- if(VerifyStage==9&&T>8.5)FPlatformMisc::RequestExit(false);
+ if(VerifyStage==8&&T>7.2){P.item=drift::Item::Boost;P.boost=3.2;VerifyStage++;}
+ if(VerifyStage==9&&T>7.8){if(!Require(!Karts[0]->Find(TEXT("held"))->IsVisible(),TEXT("boost incorrectly shown in hand")))return;bool Flame=false;for(const auto& Part:Karts[0]->Parts)if(Part.Name.StartsWith(TEXT("exhaust-flame-")))Flame|=Part.Component->IsVisible();if(!Require(Flame,TEXT("exhaust flames not visible during boost")))return;Capture(TEXT("NativeExhaust"));VerifyStage++;}
+ if(VerifyStage==10&&T>8.4){P.item=drift::Item::Shield;P.boost=0;P.shield=3;VerifyStage++;}
+ if(VerifyStage==11&&T>9){if(!Require(!Karts[0]->Find(TEXT("held"))->IsVisible(),TEXT("shield incorrectly shown in hand")))return;Capture(TEXT("NativeShield"));VerifyStage++;}
+ if(VerifyStage==12&&T>9.6){P.item=drift::Item::None;P.shield=0;Race.place(P,Tracks[Course].gaps[0].start-9,46);Previous=Race.racers;VerifyStage++;}
+ if(VerifyStage==13&&T>10.1){if(!Require(!P.grounded,TEXT("ramp did not launch the car")))return;Capture(TEXT("NativeFlight"));VerifyStage++;}
+ if(VerifyStage==14&&T>11.6){if(!Require(P.grounded&&P.phase==drift::Phase::Driving,TEXT("jump did not land")))return;Capture(TEXT("NativeLanding"));UE_LOG(LogTemp,Display,TEXT("WILDDRIFT_INPUT_OK controls, target, throw, hidden passive items, exhaust flames, jump, landing and persistence"));VerifyStage++;}
+ if(VerifyStage==15&&T>12.6)FPlatformMisc::RequestExit(false);
 }

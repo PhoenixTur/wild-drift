@@ -30,7 +30,7 @@ void AWildDriftGameMode::ShowMenu(){
   auto Skins=SNew(SHorizontalBox);for(int I=0;I<3;I++){auto J=Catalog->GetArrayField(TEXT("skins"))[I]->AsObject();FString Caption=J->GetStringField(TEXT("name"));if(!Profile.heroes[Hero].skins[I])Caption+=FString::Printf(TEXT("  ·  %d душ"),J->GetIntegerField(TEXT("price")));Skins->AddSlot().FillWidth(1).Padding(4)[Button(Caption,[this,I](){if(Profile.chooseSkin(Hero,I)){SaveProfile();CreateKarts();ShowMenu();}},Profile.heroes[Hero].skin==I)];}
   auto Bottom=SNew(SVerticalBox);Bottom->AddSlot().AutoHeight().Padding(8,4)[Label(FString::Printf(TEXT("КУЗНИЦА   ·   %d душ   ·   Уровень %d   ·   Очки развития: %d"),Profile.points,1+Profile.heroes[Hero].xp/150,Profile.skillPoints(Hero)),14,Gold)];Bottom->AddSlot().AutoHeight()[Garage];Bottom->AddSlot().AutoHeight()[Skins];
   Menu=SNew(SOverlay)
-   +SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(35,22)[SNew(SVerticalBox)+SVerticalBox::Slot().AutoHeight()[Label(TEXT("WILD DRIFT"),40,Gold)]+SVerticalBox::Slot().AutoHeight()[Label(TEXT("THE ASHEN COVENANT"),12,Muted)]]
+   +SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(35,22)[SNew(SBox).WidthOverride(500)[SNew(SVerticalBox)+SVerticalBox::Slot().AutoHeight()[Label(TEXT("WILD DRIFT"),40,Gold)]+SVerticalBox::Slot().AutoHeight()[Label(TEXT("THE ASHEN COVENANT"),12,Muted)]]]
    +SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(35,120,0,195)[SNew(SBox).WidthOverride(315)[SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(Panel).Padding(20)[Heroes]]]
    +SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(0,120,35,195)[SNew(SBox).WidthOverride(325)[SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(Panel).Padding(20)[Courses]]]
    +SOverlay::Slot().VAlign(VAlign_Bottom).Padding(35,0,35,28)[SNew(SVerticalBox)+SVerticalBox::Slot().AutoHeight().Padding(0,0,0,10)[SNew(SHorizontalBox)+SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)[Label(TEXT("WASD / стрелки — руль и газ   ·   Пробел — дрифт   ·   Shift — предмет\nC — смотреть назад   ·   R — вернуться на трассу   ·   Esc — пауза   ·   M — звук"),13)]+SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(280).HeightOverride(52)[Button(TEXT("НАЧАТЬ ЗАЕЗД  →"),[this](){StartRace();},true)]]]+SVerticalBox::Slot().AutoHeight()[SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(Panel).Padding(12)[Bottom]]];
@@ -44,7 +44,26 @@ void AWildDriftHUD::DrawHUD(){Super::DrawHUD();auto* G=Cast<AWildDriftGameMode>(
  const TCHAR* Items[]={TEXT("Найди руну на дороге"),TEXT("ДУША  ·  Shift"),TEXT("БОМБА  ·  Shift"),TEXT("ЭФИРНОЕ ПЛАМЯ  ·  Shift"),TEXT("РУННЫЙ ЩИТ  ·  Shift")};DrawRect(FLinearColor(.015,.024,.04,.85),24*S,SY-78*S,330*S,50*S);DrawText(Items[int(R.item)],R.item==drift::Item::None?Muted:Gold,40*S,SY-64*S,GEngine->GetMediumFont(),S);
  if(G->NoticeAge>0){DrawText(G->PreviousNotice,Gold,SX/2,70*S,GEngine->GetMediumFont(),S,true);}
  if(G->Countdown>0){FString V=FString::FromInt(FMath::CeilToInt(G->Countdown));DrawText(V,Gold,SX*.5-25*S,SY*.35,GEngine->GetLargeFont(),5*S);}
- int Target=G->Race.aim();if(Target>=0){auto P=G->Race.racers[Target];FVector2D Screen;if(GetOwningPlayerController()->ProjectWorldLocationToScreen(FVector(P.z*100,-P.x*100,(P.y+2)*100),Screen)){float D=32*S;for(int Side:{-1,1}){DrawLine(Screen.X+Side*D,Screen.Y-D,Screen.X+Side*D,Screen.Y-D+12*S,Gold,2*S);DrawLine(Screen.X+Side*D,Screen.Y+D,Screen.X+Side*D,Screen.Y+D-12*S,Gold,2*S);}DrawText(TEXT("70%"),Gold,Screen.X-16*S,Screen.Y-D-24*S,GEngine->GetSmallFont(),S);}}
+ const bool Throwable=R.item==drift::Item::Soul||R.item==drift::Item::Bomb;
+ if(Throwable&&!G->Paused&&!GetOwningPlayerController()->IsInputKeyDown(EKeys::C)){
+  const int Target=G->Race.aim();FVector2D Screen(SX*.5,SY*.44);bool Locked=false;
+  if(Target>=0&&G->Karts.IsValidIndex(Target)&&G->Karts[Target]){
+   FVector2D Projected;if(GetOwningPlayerController()->ProjectWorldLocationToScreen(G->Karts[Target]->GetActorLocation()+FVector(0,0,105),Projected,true)){
+    Screen.X=FMath::Clamp(Projected.X,65.f,SX-65.f);Screen.Y=FMath::Clamp(Projected.Y,130.f,SY-180.f);Locked=true;
+   }
+  }
+  const FLinearColor Ink=Locked?FLinearColor(.32,1,.7):FLinearColor(.9,.92,.96,.85);const float D=(Locked?42:24)*S,Arm=15*S;
+  for(int X:{-1,1})for(int Y:{-1,1}){
+   DrawLine(Screen.X+X*D,Screen.Y+Y*D,Screen.X+X*(D-Arm),Screen.Y+Y*D,FLinearColor(.015,.02,.025,.8),5*S);
+   DrawLine(Screen.X+X*D,Screen.Y+Y*D,Screen.X+X*D,Screen.Y+Y*(D-Arm),FLinearColor(.015,.02,.025,.8),5*S);
+   DrawLine(Screen.X+X*D,Screen.Y+Y*D,Screen.X+X*(D-Arm),Screen.Y+Y*D,Ink,2.5*S);
+   DrawLine(Screen.X+X*D,Screen.Y+Y*D,Screen.X+X*D,Screen.Y+Y*(D-Arm),Ink,2.5*S);
+  }
+  DrawLine(Screen.X-6*S,Screen.Y,Screen.X+6*S,Screen.Y,Ink,1.5*S);DrawLine(Screen.X,Screen.Y-6*S,Screen.X,Screen.Y+6*S,Ink,1.5*S);
+  const FString Caption=Locked?G->DriverField(G->Race.racers[Target].hero,TEXT("name"))+TEXT("  ·  70%  ·  SHIFT"):TEXT("ПОИСК ЦЕЛИ  ·  SHIFT");
+  DrawRect(FLinearColor(.015,.024,.04,.88),Screen.X-117*S,Screen.Y-D-29*S,234*S,24*S);
+  DrawText(Caption,Ink,Screen.X,Screen.Y-D-24*S,GEngine->GetSmallFont(),1.15*S,true);
+ }
  // A route preview comes from the exact simulation centreline, including the overpasses.
  auto& Track=G->Tracks[G->Course];double MinX=1e9,MaxX=-1e9,MinZ=1e9,MaxZ=-1e9;for(const auto& P:Track.points){MinX=FMath::Min(MinX,P.x);MaxX=FMath::Max(MaxX,P.x);MinZ=FMath::Min(MinZ,P.z);MaxZ=FMath::Max(MaxZ,P.z);}double Scale=180*S/FMath::Max(MaxX-MinX,MaxZ-MinZ);auto Map=[&](const drift::Point& P){return FVector2D(SX-220*S+(P.x-MinX)*Scale,35*S+(P.z-MinZ)*Scale);};for(int I=0;I<int(Track.points.size());I+=6){auto A=Map(Track.points[I]),B=Map(Track.points[(I+6)%Track.points.size()]);DrawLine(A.X,A.Y,B.X,B.Y,FLinearColor(.55,.62,.7,.65),2*S);}for(int I=5;I>=0;I--){auto P=Map(G->Race.racers[I]);DrawRect(I==0?Gold:FLinearColor(.65,.72,.8),P.X-3*S,P.Y-3*S,6*S,6*S);}
 }

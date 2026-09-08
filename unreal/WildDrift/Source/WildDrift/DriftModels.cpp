@@ -48,23 +48,22 @@ USceneComponent* AWildDriftGameMode::LoadNode(AWildDriftModel* Owner,const TShar
 }
 AWildDriftModel* AWildDriftGameMode::LoadModel(const FString& File){auto J=ReadJson(File);if(!J){Fail(TEXT("Unable to read ")+File);return nullptr;}auto* Model=GetWorld()->SpawnActor<AWildDriftModel>();LoadNode(Model,J,Model->GetRootComponent());return Model;}
 void AWildDriftModel::Pose(const drift::Racer& R,double Time,double Dt){
- WheelAngle+=R.speed*Dt/.54;const bool Holding=R.item!=drift::Item::None;int Selected=int(R.item);const FString Items[]={TEXT(""),TEXT("item-coconut"),TEXT("item-bomb"),TEXT("item-boost"),TEXT("item-shield")};
+ WheelAngle+=R.speed*Dt/.54;const bool Holding=R.item==drift::Item::Soul||R.item==drift::Item::Bomb;int Selected=int(R.item);const FString Items[]={TEXT(""),TEXT("item-coconut"),TEXT("item-bomb"),TEXT("item-boost"),TEXT("item-shield")};
  for(auto& P:Parts){auto* C=P.Component;const FString& N=P.Name;
-  if(N==TEXT("body")){C->SetRelativeRotation(FRotator(-R.steering*3,-FMath::Sin(R.hitAnim*19)*R.hitAnim*35,0));C->SetRelativeLocation(P.Rest.GetLocation()+FVector(0,0,(R.speed>1&&R.grounded?FMath::Sin(Time*20+R.id)*1.8:0)-(R.landing>0?FMath::Sin(R.landing/.4*PI)*16:0)));}
+  if(N==TEXT("body")){C->SetRelativeRotation(FRotator(0,-FMath::Sin(R.hitAnim*19)*R.hitAnim*20,0));C->SetRelativeLocation(P.Rest.GetLocation()+FVector(0,0,(R.speed>1&&R.grounded?FMath::Sin(Time*20+R.id)*1.8:0)-(R.landing>0?FMath::Sin(R.landing/.4*PI)*16:0)));}
   else if(N.StartsWith(TEXT("wheel-")))C->SetRelativeRotation((P.Rest.GetRotation()*FQuat(FVector::YAxisVector,WheelAngle)).Rotator());
   else if(N.StartsWith(TEXT("front-pivot")))C->SetRelativeRotation((P.Rest.GetRotation()*FQuat(FVector::ZAxisVector,R.steering*.38)).Rotator());
   else if(N==TEXT("head")){C->SetRelativeRotation((P.Rest.GetRotation()*FQuat(FVector::ZAxisVector,R.steering*.16)*FQuat(FVector::XAxisVector,R.steering*.08)).Rotator());C->SetRelativeLocation(P.Rest.GetLocation()+FVector(0,0,FMath::Sin(Time*2)*1.2));}
-  else if(N==TEXT("tail"))C->SetRelativeRotation((P.Rest.GetRotation()*FQuat(FVector::ZAxisVector,-FMath::Sin(Time*2.3+R.id)*.09)).Rotator());
   else if(N==TEXT("steeringPivot"))C->SetRelativeRotation((P.Rest.GetRotation()*FQuat(FVector::XAxisVector,R.steering*.42)).Rotator());
   else if(N.StartsWith(TEXT("eye-"))){auto S=P.Rest.GetScale3D();if(drift::wrap(Time+R.id*1.13,4.3)<.13)S.Z*=.13;C->SetRelativeScale3D(S);}
   else if(N==TEXT("held")){C->SetVisibility(Holding,true);C->SetRelativeRotation(FRotator(0,0,FMath::Sin(Time*2)*4));}
   else if(N.StartsWith(TEXT("item-")))C->SetVisibility(Holding&&N==Items[Selected],true);
   else if(N==TEXT("shield")){C->SetVisibility(R.shield>0,true);C->SetRelativeRotation(FRotator(0,Time*40,0));}
-  else if(N==TEXT("flame")){C->SetVisibility(R.boost>0,true);C->SetRelativeScale3D(P.Rest.GetScale3D()*(1+.13*FMath::Sin(Time*40)));}
+  else if(N.StartsWith(TEXT("exhaust-flame-"))){C->SetVisibility(R.boost>0,true);C->SetRelativeScale3D(P.Rest.GetScale3D()*FVector(1.0+.22*FMath::Sin(Time*37+R.id),1,1));}
   else if(N==TEXT("respawnRing")){C->SetVisibility(R.phase==drift::Phase::Respawning,true);C->SetRelativeRotation(FRotator(0,Time*160,0));}
-  else if(N==TEXT("cape")&&P.Mesh){auto V=P.Mesh->Vertices;double Wind=.45+R.speed/32;for(auto& A:V){double Along=FMath::Clamp(-A.Z/153.,0.,1.);A.X+=Along*((FMath::Sin(Time*3.5-A.Y*.03-Along*4)*7.5+FMath::Sin(Time*5.3-Along*8)*3.5)*Wind-Wind*12);A.Y-=FMath::Sin(Time*1.7+Along*3)*Along*6;}Cast<UProceduralMeshComponent>(C)->UpdateMeshSection_LinearColor(0,V,P.Mesh->Normals,P.Mesh->UVs,P.Mesh->Colors,TArray<FProcMeshTangent>());}
+
  }
  // The raised hand and articulated arm use the same attachment coordinates as the authored model.
- for(int I=0;I<2;I++){double Side=I==0?-1:1;FVector Shoulder(-32,-Side*46,198),Elbow(-7,-Side*62,162),Hand(40,-Side*39,143);if(I==0&&(Holding||R.throwAnim>0)){Hand=FVector(-2,83,205);if(R.throwAnim>0)Hand.X+=FMath::Sin((.4-R.throwAnim)/.4*PI)*110;Elbow=FVector(-15,80,174);}auto* H=Find(FString::Printf(TEXT("hand-%d"),I));if(H)H->SetRelativeLocation(Hand);if(I==0){auto* Held=Find(TEXT("held"));if(Held){Held->SetRelativeLocation(Hand+FVector(0,0,30));Held->SetRelativeRotation(FRotator(0,-Time*40,0));}}
+ for(int I=0;I<2;I++){double Side=I==0?-1:1;FVector Shoulder(-35,-Side*42,180),Elbow(-4,-Side*55,143),Hand(35,-Side*31,136);if(I==0&&(Holding||R.throwAnim>0)){Hand=FVector(-2,67,195);if(R.throwAnim>0)Hand.X+=FMath::Sin((.4-R.throwAnim)/.4*PI)*110;Elbow=FVector(-15,65,165);}auto* H=Find(FString::Printf(TEXT("hand-%d"),I));if(H)H->SetRelativeLocation(Hand);if(I==0){auto* Held=Find(TEXT("held"));if(Held){Held->SetRelativeLocation(Hand+FVector(0,0,30));Held->SetRelativeRotation(FRotator(0,-Time*40,0));}}
   const FVector Ends[]={Shoulder,Elbow,Hand};for(int K=0;K<2;K++){auto* Arm=Find(FString::Printf(TEXT("%s-arm-%d"),K==0?TEXT("upper"):TEXT("lower"),I));if(Arm){FVector A=Ends[K],B=Ends[K+1],S=Arm->GetRelativeScale3D();S.Z=(B-A).Size()/100;Arm->SetRelativeLocation((A+B)*.5);Arm->SetRelativeRotation(FQuat::FindBetweenNormals(FVector::ZAxisVector,(B-A).GetSafeNormal()));Arm->SetRelativeScale3D(S);}}}
 }

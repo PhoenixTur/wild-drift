@@ -24,7 +24,7 @@ public:
  AWildDriftModel(); TArray<FDriftPart> Parts;
  USceneComponent* Find(const FString& Name) const;
  void Pose(const drift::Racer& Racer,double Time,double Dt);
- double WheelAngle=0;
+ double WheelAngle=0; drift::Attitude Attitude;
 };
 UCLASS()
 class AWildDriftHUD : public AHUD {
@@ -52,12 +52,14 @@ public:
  UPROPERTY() TObjectPtr<class UPointLightComponent> CarLight;
  UPROPERTY() TObjectPtr<class USoundWaveProcedural> MotorSound;
  UPROPERTY() TObjectPtr<class UAudioComponent> MotorAudio;
+ UPROPERTY() TObjectPtr<class UDirectionalLightComponent> WeatherSun;
+ UPROPERTY() TObjectPtr<class UExponentialHeightFogComponent> WeatherFog;
  double MotorPhase=0,SoundClock=0; bool AudioMuted=false;
  TArray<FVector> SnowOffsets; TArray<double> SmokeAge, MarkAge; int NextSmoke=0,NextMark=0;
  std::array<drift::Racer,6> Previous; double Accumulator=0,Clock=0,Countdown=0,NoticeAge=0,SmokeClock=0;
  FString PreviousNotice,Error; FVector CameraAnchor; double CameraYaw=0,CameraY=0,CameraGrade=0;
  int Hero=0,Course=0,UIRevision=0; bool Verify=false; int VerifyStage=0; std::array<bool,7> VerifyKeys{}; double VerifyYaw=0;
- int SmokeStage=0; bool SmokeSuite=false; bool Racing=false,Paused=false,CameraReady=false,SmokeTest=false,AutoDrive=false,SmokeFinished=false;
+ int GalleryStage=0; bool Gallery=false; int SmokeStage=0; bool SmokeSuite=false; bool Racing=false,Paused=false,CameraReady=false,SmokeTest=false,AutoDrive=false,SmokeFinished=false;
  TSharedPtr<SWidget> Menu; TSharedPtr<struct FSlateBrush> CoverBrush;
  FString DriverField(int Index,const TCHAR* Field) const; FString CourseField(int Index,const TCHAR* Field) const;
  void LoadCourse(); void CreateKarts(); void StartRace(); void TogglePause(); void ShowMenu(); void HideMenu(); void SaveProfile(); void LoadProfile();
