@@ -6,19 +6,25 @@ const DRIVERS=[
  {name:'Морг',kind:'Енот-страж',color:0x647c6b,glow:0x96dca8,speed:45,handling:1,boost:1,trait:'Костяная броня',description:'Замедление от попаданий на 35% короче.',armor:.65},
  {name:'Селена',kind:'Лунная ведьма',color:0x9494bc,glow:0xbfbaff,speed:48,handling:.95,boost:1,trait:'Лунный прыжок',description:'Чистое приземление даёт 1,2 секунды турбо.',landingBoost:1.2},
  {name:'Каэль',kind:'Ворон-чернокнижник',color:0x5e608c,glow:0xb291ed,speed:46,handling:1.03,boost:1,trait:'Жнец душ',description:'Получает на 25% больше опыта за заезд.',xpBonus:1.25},
- {name:'Грим',kind:'Волк-руноход',color:0x779298,glow:0x87dce1,speed:47,handling:.98,boost:1.3,trait:'Рунный двигатель',description:'Ускорения длятся на 30% дольше.'}
+ {name:'Грим',kind:'Волк-руноход',color:0x779298,glow:0x87dce1,speed:47,handling:.98,boost:1.3,trait:'Рунный двигатель',description:'Ускорения длятся на 30% дольше.'},
+ {name:'Эйрик',kind:'Олень-хранитель',color:0x8a7656,glow:0xd4e6a0,speed:46,handling:1.05,boost:1,trait:'Корни хранителя',description:'На 25% выше предельная скорость на обочине.',offroadSpeed:30},
+ {name:'Бран',kind:'Медведь-кузнец',color:0x816855,glow:0xffbd79,speed:44,handling:.97,boost:1,trait:'Воля титана',description:'Теряет вдвое меньше скорости от столкновений с гонщиками.',collisionRetention:.9},
+ {name:'Искра',kind:'Драконица-алхимик',color:0x766c95,glow:0xf3a9d5,speed:47,handling:1,boost:1,trait:'Живой эфир',description:'Поднятый рунический щит действует на 40% дольше.',shieldDuration:9.8}
 ];
 const ITEMS={boost:{name:'ЭФИРНОЕ ПЛАМЯ',icon:'ϟ'},shield:{name:'РУННЫЙ ЩИТ',icon:'◈'},coconut:{name:'СФЕРА ДУШ',icon:'◉'},bomb:{name:'ПЕПЕЛЬНАЯ БОМБА',icon:'✹'}};
 const STAT_KEYS=['speed','handling','acceleration','braking','aero'];
-function newProfile(){return {version:1,heroes:DRIVERS.map(()=>({xp:0,upgrades:Object.fromEntries(STAT_KEYS.map(k=>[k,0]))})),records:{}};}
-function parseProfile(raw){if(raw===null)return newProfile();const data=JSON.parse(raw);if(data.version!==1||!Array.isArray(data.heroes)||data.heroes.length!==DRIVERS.length)throw new Error('Unsupported save');const result=newProfile();
+const SKINS=[{name:'Первородный',price:0,description:'Авторский кузов героя, открытые спицованные колёса.'},{name:'Реликвия',price:180,description:'Длинный обтекаемый нос, закрытые крылья, раздвоенный хвост и высокий плавник.'},{name:'Осада',price:320,description:'Широкая броня, шесть колёс, защитная дуга и парные турбины.'}];
+function newProfile(){return {version:2,points:220,heroes:DRIVERS.map(()=>({xp:0,upgrades:Object.fromEntries(STAT_KEYS.map(k=>[k,0])),skins:[0],skin:0})),records:{},legacyRecords:{}};}
+function parseProfile(raw){if(raw===null)return newProfile();const data=JSON.parse(raw);if(!data||![1,2].includes(data.version)||!Array.isArray(data.heroes)||data.heroes.length!==(data.version===1?5:DRIVERS.length))throw new Error('Unsupported save');const result=newProfile();
  data.heroes.forEach((h,i)=>{if(!h||!Number.isInteger(h.xp)||h.xp<0||h.xp>1000000)throw new Error('Invalid XP');const dest=result.heroes[i];dest.xp=h.xp;for(const k of STAT_KEYS){const n=h.upgrades?.[k];if(!Number.isInteger(n)||n<0||n>5)throw new Error('Invalid upgrade');dest.upgrades[k]=n;}if(skillPoints(dest)<0)throw new Error('Overspent points');});
- for(const id of ['ash','thorn','frost']){const n=data.records?.[id];if(n!==undefined){if(typeof n!=='number'||!Number.isFinite(n)||n<=0)throw new Error('Invalid record');result.records[id]=n;}}return result;}
+ if(data.version===2){if(!Number.isInteger(data.points)||data.points<0||data.points>100000000)throw new Error('Invalid wallet');result.points=data.points;data.heroes.forEach((h,i)=>{if(!Array.isArray(h.skins)||!h.skins.includes(0)||new Set(h.skins).size!==h.skins.length||h.skins.some(n=>!Number.isInteger(n)||!SKINS[n])||!h.skins.includes(h.skin))throw new Error('Invalid skin');result.heroes[i].skins=[...h.skins];result.heroes[i].skin=h.skin;});}
+ for(const id of ['ash','thorn','frost','forge','oracle']){for(const [source,dest,key] of data.version===1?[[data.records,result.legacyRecords,id]]:[[data.legacyRecords,result.legacyRecords,id],[data.records,result.records,id+'-v2']]){const n=source?.[key];if(n!==undefined){if(typeof n!=='number'||!Number.isFinite(n)||n<=0)throw new Error('Invalid record');dest[key]=n;}}}return result;}
+function chooseSkin(profile,driver,skin){if(!Number.isInteger(driver)||!DRIVERS[driver])return false;const hero=profile.heroes[driver],choice=SKINS[skin];if(!hero||!Number.isInteger(skin)||!choice)return false;if(!hero.skins.includes(skin)){if(profile.points<choice.price)return false;profile.points-=choice.price;hero.skins.push(skin);}hero.skin=skin;return true;}
 function skillPoints(hero){return 3+Math.floor(hero.xp/150)-STAT_KEYS.reduce((sum,k)=>sum+hero.upgrades[k],0);}
 function upgrade(profile,driver,key){const h=profile.heroes[driver];if(!h||!STAT_KEYS.includes(key)||skillPoints(h)<1||h.upgrades[key]>=5)return false;h.upgrades[key]++;return true;}
 function stats(driver,levels={}){const base=DRIVERS[driver],u=Object.fromEntries(STAT_KEYS.map(k=>[k,Math.max(0,Math.min(5,Math.floor(Number(levels[k])||0)))])),aero=1+u.aero*.05;
  return {...base,speed:base.speed*(1+u.speed*.035),handling:base.handling*(1+u.handling*.045)*(1+u.aero*.018),acceleration:25*(1+u.acceleration*.075)*(1+u.aero*.03),braking:45*(1+u.braking*.085),aero,response:13+u.handling*.7+u.aero*.3};}
-function awardRace(profile,s){if(!s.finished||s.rewardClaimed)return null;const h=profile.heroes[s.driver],oldLevel=Math.floor(h.xp/150),xp=Math.round((140+(6-s.rank)*28+Math.min(50,s.metrics.driftSeconds)+s.metrics.jumps*8+s.metrics.hits*12)*(DRIVERS[s.driver].xpBonus||1));h.xp=Math.min(1000000,h.xp+xp);const id=s.track.id||'ash';profile.records[id]=Math.min(profile.records[id]||Infinity,s.finishTime);s.rewardClaimed=true;return {xp,levelUps:Math.floor(h.xp/150)-oldLevel};}
+function awardRace(profile,s){if(!s.finished||s.rewardClaimed)return null;const h=profile.heroes[s.driver],oldLevel=Math.floor(h.xp/150),xp=Math.round((140+(6-s.rank)*28+Math.min(50,s.metrics.driftSeconds)+s.metrics.jumps*8+s.metrics.hits*12)*(DRIVERS[s.driver].xpBonus||1)),points=100+(6-s.rank)*25+s.metrics.hits*10;h.xp=Math.min(1000000,h.xp+xp);profile.points=Math.min(100000000,profile.points+points);const id=s.track.recordKey||s.track.id||'ash';profile.records[id]=Math.min(profile.records[id]||Infinity,s.finishTime);s.rewardClaimed=true;return {xp,points,levelUps:Math.floor(h.xp/150)-oldLevel};}
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const wrap=(x,n)=>((x%n)+n)%n;
 const angle=x=>Math.atan2(Math.sin(x),Math.cos(x));
@@ -26,15 +32,16 @@ const formatTime=s=>{const cs=Math.floor(Math.max(0,s)*100);return `${String(Mat
 function makeTrack(points,gaps=[]){
  const segments=[];let length=0;
  for(let i=0;i<points.length;i++){const a=points[i],b=points[(i+1)%points.length],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<.0001)continue;segments.push({a,b,d:length,len,tx:dx/len,tz:dz/len});length+=len;}
- const track={length,segments,gaps,width:10.6,pads:[],pickups:[],fences:[],fenceLane:10.75};
+ const track={length,segments,gaps,width:10.6,pads:[],pickups:[],fences:[],banks:[],fenceLane:10.75};
  track.index=d=>{d=wrap(d,length);let lo=0,hi=segments.length-1;while(lo<hi){const m=Math.ceil((lo+hi)/2);if(segments[m].d>d)hi=m-1;else lo=m;}return lo;};
  track.fenceAt=(d,side)=>track.fences.find(f=>f.side===side&&wrap(d,length)>=f.start&&wrap(d,length)<=f.end);
  track.gapAt=d=>gaps.find(g=>wrap(d,length)>=g.start&&wrap(d,length)<g.end);
  track.bridgeAt=d=>gaps.find(g=>wrap(d,length)>=g.start-25&&wrap(d,length)<=g.end+25);
  function surface(d,base,slope){let lift=0;d=wrap(d,length);for(const g of gaps){if(d>=g.start-22&&d<g.start){lift=5.8*(d-g.start+22)/22;slope+=5.8/22;}else if(d>=g.start&&d<g.end){lift=5.8;}else if(d>=g.end&&d<g.end+24){lift=5.8*(1-(d-g.end)/24);slope-=5.8/24;}}return {y:base+lift,slope,ground:!track.gapAt(d)};}
- track.sample=(d,lane=0)=>{d=wrap(d,length);const seg=segments[track.index(d)],t=(d-seg.d)/seg.len;return {x:seg.a.x+(seg.b.x-seg.a.x)*t-seg.tz*lane,z:seg.a.z+(seg.b.z-seg.a.z)*t+seg.tx*lane,tx:seg.tx,tz:seg.tz,d,lane,...surface(d,seg.a.y+(seg.b.y-seg.a.y)*t,(seg.b.y-seg.a.y)/seg.len)};};
- track.nearest=(x,z,hint)=>{let best=null,bestDistance=Infinity;const center=Number.isFinite(hint)?track.index(hint):0,span=Number.isFinite(hint)?50:segments.length;
-  for(let k=Number.isFinite(hint)?-span:0;k<span;k++){const seg=segments[wrap(center+k,segments.length)],t=clamp(((x-seg.a.x)*seg.tx+(z-seg.a.z)*seg.tz)/seg.len,0,1),px=seg.a.x+seg.tx*t*seg.len,pz=seg.a.z+seg.tz*t*seg.len,dist=(x-px)**2+(z-pz)**2;if(dist<bestDistance){bestDistance=dist;const d=seg.d+t*seg.len;best={...track.sample(d),lane:(x-px)*-seg.tz+(z-pz)*seg.tx,distance:Math.sqrt(dist)};}}
+ track.bank=(d,lane)=>{let y=0,crossSlope=0,slope=0;for(const b of track.banks){const t=(wrap(d,length)-b.start)/(b.end-b.start);if(t<=0||t>=1||track.bridgeAt(d))continue;const edge=Math.max(0,b.side*lane-3),fade=Math.sin(Math.PI*t)**2;y+=edge*edge*.052*fade;crossSlope+=b.side*edge*.104*fade;slope+=edge*edge*.052*Math.PI*Math.sin(2*Math.PI*t)/(b.end-b.start);}return {y,crossSlope,slope};};
+ track.sample=(d,lane=0)=>{d=wrap(d,length);const seg=segments[track.index(d)],t=(d-seg.d)/seg.len,base=surface(d,seg.a.y+(seg.b.y-seg.a.y)*t,(seg.b.y-seg.a.y)/seg.len),bank=track.bank(d,lane);return {x:seg.a.x+(seg.b.x-seg.a.x)*t-seg.tz*lane,z:seg.a.z+(seg.b.z-seg.a.z)*t+seg.tx*lane,tx:seg.tx,tz:seg.tz,d,lane,...base,y:base.y+bank.y,slope:base.slope+bank.slope,crossSlope:bank.crossSlope};};
+ track.nearest=(x,z,hint,y)=>{let best=null,bestDistance=Infinity;const center=Number.isFinite(hint)?track.index(hint):0,span=Number.isFinite(hint)?50:segments.length;
+  for(let k=Number.isFinite(hint)?-span:0;k<span;k++){const seg=segments[wrap(center+k,segments.length)],t=clamp(((x-seg.a.x)*seg.tx+(z-seg.a.z)*seg.tz)/seg.len,0,1),px=seg.a.x+seg.tx*t*seg.len,pz=seg.a.z+seg.tz*t*seg.len,dist=(x-px)**2+(z-pz)**2,score=dist+(Number.isFinite(y)?(y-(seg.a.y+(seg.b.y-seg.a.y)*t))**2:0);if(score<bestDistance){bestDistance=score;const d=seg.d+t*seg.len,lane=(x-px)*-seg.tz+(z-pz)*seg.tx;best={...track.sample(d,lane),distance:Math.sqrt(dist)};}}
   return best;
  };
  return track;
@@ -62,7 +69,7 @@ function useItem(s,owner=0){
  const r=s.racers[owner],item=r.item;if(!item||s.finished||r.phase!=='driving')return false;
  const target=aimTarget(s,owner),guided=!!target&&random(s)<.7;r.item=null;r.itemAge=0;r.throwAnim=.4;
  if(item==='boost'){r.boost=3.2*r.cfg.boost;if(owner===0)s.events.push('ТУРБО!');}
- else if(item==='shield'){r.shield=7;if(owner===0)s.events.push('ЩИТ · 7 СЕКУНД');}
+ else if(item==='shield'){r.shield=r.cfg.shieldDuration||7;if(owner===0)s.events.push('РУННЫЙ ЩИТ · '+r.shield+' СЕКУНД');}
  else{const f={x:Math.sin(r.yaw),z:Math.cos(r.yaw)},speed=target?100:r.speed+30;if(target&&!guided){const missYaw=Math.atan2(target.x-r.x,target.z-r.z)+.35;f.x=Math.sin(missYaw);f.z=Math.cos(missYaw);}s.projectiles.push({id:s.nextProjectile++,type:item,owner,targetId:guided?target.id:null,missTargetId:target&&!guided?target.id:null,x:r.x+f.x*2.7,y:r.y+2.3,z:r.z+f.z*2.7,vx:f.x*speed,vz:f.z*speed,vy:item==='bomb'?7:3.5,age:0,life:guided?5:4,nearD:r.nearD});if(owner===0)s.events.push(guided?'ДУША ЗАХВАЧЕНА!':item==='bomb'?'ПЕПЕЛЬНАЯ БОМБА!':'СФЕРА ДУШ!');}
  return true;
 }
@@ -102,8 +109,8 @@ function drive(s,r,input,dt){
   const offroad=Math.abs(r.lane)>9.2,grip=offroad?3.5:wantsDrift?1.65:10;
   const accel=input.brake?-cfg.braking:input.throttle?cfg.acceleration:-5;
   forward=Math.max(0,forward+(accel-previousSurface.slope*10-(forward*forward*.0007)/cfg.aero)*dt);lateral*=Math.exp(-grip*dt);
-  const max=offroad?24:cfg.speed+(r.boost>0?19:0);if(forward>max)forward=Math.max(max,forward-25*dt);if(r.stun>0)forward=Math.min(forward,17);
-  r.vx=fx*forward+rx*lateral;r.vz=fz*forward+rz*lateral;
+  const max=offroad?(cfg.offroadSpeed||24):cfg.speed+(r.boost>0?19:0);if(forward>max)forward=Math.max(max,forward-(Math.max(0,accel)+25)*dt);if(r.stun>0)forward=Math.min(forward,17);
+  r.vx=fx*forward+rx*lateral+previousSurface.tz*previousSurface.crossSlope*18*dt;r.vz=fz*forward+rz*lateral-previousSurface.tx*previousSurface.crossSlope*18*dt;
  }
  r.speed=Math.hypot(r.vx,r.vz);r.slip=r.speed>3?angle(Math.atan2(r.vx,r.vz)-r.yaw):0;
  const drifting=wantsDrift&&Math.abs(r.slip)>.13;
@@ -128,11 +135,11 @@ function step(s,input,dt){
  for(const r of s.racers){for(const key of ['boost','shield','stun','contact','wallContact','throwAnim','hitAnim','landing'])r[key]=Math.max(0,r[key]-dt);r.itemAge+=dt;drive(s,r,r.id===0?input:botInput(s,r),dt);if(r.id>0&&r.item&&r.itemAge>2.8&&r.phase==='driving')useItem(s,r.id);}
  for(const box of s.pickups){box.cooldown=Math.max(0,box.cooldown-dt);if(box.cooldown>0)continue;for(const r of s.racers){if(r.item||!r.grounded||r.phase!=='driving')continue;const delta=wrap(r.nearD-box.d+s.length/2,s.length)-s.length/2;if(Math.abs(delta)<2.1&&Math.min(...[-5,0,5].map(l=>Math.abs(r.lane-l)))<1.9){r.item=['coconut','bomb','boost','shield'][Math.floor(random(s)*4)];r.itemAge=0;box.cooldown=1.8;if(r.id===0)s.events.push('ПРЕДМЕТ В РУКЕ · SHIFT — ИСПОЛЬЗОВАТЬ');break;}}}
  for(const r of s.racers)if(r.grounded&&r.phase==='driving'&&Math.abs(r.lane)<5)for(const d of s.track.pads){const delta=wrap(r.nearD-d+s.length/2,s.length)-s.length/2;if(Math.abs(delta)<2){r.boost=Math.max(r.boost,1.6*r.cfg.boost);}}
- for(let i=0;i<s.racers.length;i++)for(let j=i+1;j<s.racers.length;j++){const a=s.racers[i],b=s.racers[j];if(a.phase!=='driving'||b.phase!=='driving'||a.contact||b.contact||Math.abs(a.y-b.y)>2)continue;const dx=a.x-b.x,dz=a.z-b.z,dist=Math.hypot(dx,dz);if(dist<2.1&&dist>.001){const nx=dx/dist,nz=dz/dist,push=(2.1-dist)*.5;a.x+=nx*push;a.z+=nz*push;b.x-=nx*push;b.z-=nz*push;if(!a.shield){a.vx*=.8;a.vz*=.8;}if(!b.shield){b.vx*=.8;b.vz*=.8;}a.contact=b.contact=.6;}}
+ for(let i=0;i<s.racers.length;i++)for(let j=i+1;j<s.racers.length;j++){const a=s.racers[i],b=s.racers[j];if(a.phase!=='driving'||b.phase!=='driving'||a.contact||b.contact||Math.abs(a.y-b.y)>2)continue;const dx=a.x-b.x,dz=a.z-b.z,dist=Math.hypot(dx,dz);if(dist<2.1&&dist>.001){const nx=dx/dist,nz=dz/dist,push=(2.1-dist)*.5;a.x+=nx*push;a.z+=nz*push;b.x-=nx*push;b.z-=nz*push;if(!a.shield){a.vx*=a.cfg.collisionRetention||.8;a.vz*=a.cfg.collisionRetention||.8;}if(!b.shield){b.vx*=b.cfg.collisionRetention||.8;b.vz*=b.cfg.collisionRetention||.8;}a.contact=b.contact=.6;}}
  tickProjectiles(s,dt);
  const laps=Math.min(3,Math.floor(Math.max(0,p.d)/s.length));if(laps>s.lapTimes.length&&p.checkpoint>=laps*12){s.lapTimes.push(s.time-s.lastLap);s.lastLap=s.time;if(laps<3)s.events.push(laps===2?'ПОСЛЕДНИЙ КРУГ!':'КРУГ 2 · ТАК ДЕРЖАТЬ!');}
  s.rank=1+s.racers.slice(1).filter(r=>r.d>p.d||r.finishTime!==null).length;
  if(p.finishTime!==null){s.finished=true;s.finishTime=p.finishTime;s.rank=1+s.racers.slice(1).filter(r=>r.finishTime!==null&&r.finishTime<s.finishTime).length;}
 }
-const api={DRIVERS,ITEMS,STAT_KEYS,newProfile,parseProfile,skillPoints,upgrade,stats,awardRace,aimTarget,clamp,wrap,angle,formatTime,makeTrack,createRace,useItem,recover,botInput,step};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.RaceCore=api;
+const api={DRIVERS,ITEMS,STAT_KEYS,SKINS,chooseSkin,newProfile,parseProfile,skillPoints,upgrade,stats,awardRace,aimTarget,clamp,wrap,angle,formatTime,makeTrack,createRace,useItem,recover,botInput,step};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.RaceCore=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
