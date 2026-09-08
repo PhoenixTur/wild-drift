@@ -1,0 +1,13 @@
+**/Binaries/
+**/Intermediate/
+**/Saved/
+**/DerivedDataCache/
+**/.vs/
+**/*.xcworkspace/
+**/*.xcodeproj/
+**/*.sln
+artifacts/
+
+**/__pycache__/
+**/*.PackageVersionCounter
+**/FileOpenOrder/
