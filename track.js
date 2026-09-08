@@ -14,6 +14,11 @@ root.RaceTracks=courses.map((course,index)=>{
  const points=Array.from({length:1500},(_,i)=>{const p=curve.getPointAt(i/1500);return {x:p.x,y:p.y,z:p.z};}),track=C.makeTrack(points);
  Object.assign(track,{id:course.id,name:course.name,meta:course,courseIndex:index});for(const [x,z,span] of course.gaps){const d=track.nearest(x,z).d;track.gaps.push({start:d-span/2,end:d+span/2});}
  track.pads=[...track.gaps.map(g=>g.start-44),track.length*.32,track.length*.82];track.pickups=Array.from({length:12},(_,i)=>(i+.4)*track.length/12).filter(d=>!track.bridgeAt(d));
+ // Only selected sections have barriers; bridge launches and landings stay clear.
+ for(const [from,to,sides] of [[.006,.041,[-1,1]],[.2,.28,[-1]],[.38,.45,[1]],[.64,.71,[-1,1]],[.84,.9,[-1]]]){
+  let spans=[[track.length*from,track.length*to]];for(const gap of track.gaps)spans=spans.flatMap(([a,b])=>{const lo=gap.start-29,hi=gap.end+29;if(b<lo||a>hi)return [[a,b]];return [[a,Math.min(b,lo)],[Math.max(a,hi),b]].filter(([l,r])=>r-l>4);});
+  for(const [start,end] of spans)for(const side of sides)track.fences.push({start,end,side});
+ }
  track.bounds={minX:Math.min(...points.map(p=>p.x))-25,maxX:Math.max(...points.map(p=>p.x))+25,minZ:Math.min(...points.map(p=>p.z))-25,maxZ:Math.max(...points.map(p=>p.z))+25};return track;
 });
 root.RaceTrack=root.RaceTracks[0];

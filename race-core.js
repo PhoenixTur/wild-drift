@@ -26,8 +26,9 @@ const formatTime=s=>{const cs=Math.floor(Math.max(0,s)*100);return `${String(Mat
 function makeTrack(points,gaps=[]){
  const segments=[];let length=0;
  for(let i=0;i<points.length;i++){const a=points[i],b=points[(i+1)%points.length],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);if(len<.0001)continue;segments.push({a,b,d:length,len,tx:dx/len,tz:dz/len});length+=len;}
- const track={length,segments,gaps,width:10.6,pads:[],pickups:[]};
+ const track={length,segments,gaps,width:10.6,pads:[],pickups:[],fences:[],fenceLane:10.75};
  track.index=d=>{d=wrap(d,length);let lo=0,hi=segments.length-1;while(lo<hi){const m=Math.ceil((lo+hi)/2);if(segments[m].d>d)hi=m-1;else lo=m;}return lo;};
+ track.fenceAt=(d,side)=>track.fences.find(f=>f.side===side&&wrap(d,length)>=f.start&&wrap(d,length)<=f.end);
  track.gapAt=d=>gaps.find(g=>wrap(d,length)>=g.start&&wrap(d,length)<g.end);
  track.bridgeAt=d=>gaps.find(g=>wrap(d,length)>=g.start-25&&wrap(d,length)<=g.end+25);
  function surface(d,base,slope){let lift=0;d=wrap(d,length);for(const g of gaps){if(d>=g.start-22&&d<g.start){lift=5.8*(d-g.start+22)/22;slope+=5.8/22;}else if(d>=g.start&&d<g.end){lift=5.8;}else if(d>=g.end&&d<g.end+24){lift=5.8*(1-(d-g.end)/24);slope-=5.8/24;}}return {y:base+lift,slope,ground:!track.gapAt(d)};}
@@ -39,7 +40,7 @@ function makeTrack(points,gaps=[]){
  return track;
 }
 function createRace(track,driver=0,levels={}){
- const racers=Array.from({length:6},(_,i)=>{const d=i===0?0:8+(5-i)*5,lane=i===0?-2.5:(i%2?2.5:-2.5),p=track.sample(d,lane);return {id:i,hero:i===0?driver:(driver+i)%DRIVERS.length,cfg:stats(i===0?driver:(driver+i)%DRIVERS.length,i===0?levels:{}),x:p.x,y:p.y,z:p.z,yaw:Math.atan2(p.tx,p.tz),vx:0,vz:0,vy:0,yawRate:0,steering:0,speed:0,d,lane,nearD:p.d,surface:p,lastSafeD:d,checkpoint:1,boost:0,shield:0,stun:0,contact:0,drift:0,slip:0,drifting:false,item:null,itemAge:0,throwAnim:0,hitAnim:0,finishTime:null,phase:'driving',phaseTime:0,grounded:true,airTime:0,jumpOrigin:null,landing:0,falls:0};});
+ const racers=Array.from({length:6},(_,i)=>{const d=i===0?0:8+(5-i)*5,lane=i===0?-2.5:(i%2?2.5:-2.5),p=track.sample(d,lane);return {id:i,hero:i===0?driver:(driver+i)%DRIVERS.length,cfg:stats(i===0?driver:(driver+i)%DRIVERS.length,i===0?levels:{}),x:p.x,y:p.y,z:p.z,yaw:Math.atan2(p.tx,p.tz),vx:0,vz:0,vy:0,yawRate:0,steering:0,speed:0,d,lane,nearD:p.d,surface:p,lastSafeD:d,checkpoint:1,boost:0,shield:0,stun:0,contact:0,wallContact:0,drift:0,slip:0,drifting:false,item:null,itemAge:0,throwAnim:0,hitAnim:0,finishTime:null,phase:'driving',phaseTime:0,grounded:true,airTime:0,jumpOrigin:null,landing:0,falls:0};});
  return {track,length:track.length,driver,rewardClaimed:false,metrics:{driftSeconds:0,jumps:0,hits:0},time:0,finished:false,finishTime:null,rank:6,lapTimes:[],lastLap:0,events:[],racers,projectiles:[],effects:[],nextProjectile:0,rng:48329,pickups:track.pickups.map(d=>({d,cooldown:0})),padCooldown:0};
 }
 function random(s){s.rng=(s.rng*1664525+1013904223)>>>0;return s.rng/4294967296;}
@@ -80,6 +81,15 @@ function botInput(s,r){
  const look=s.track.sample(r.d+11+r.speed*.38,Math.sin(s.time*.2+r.id)*1.8),error=angle(Math.atan2(look.x-r.x,look.z-r.z)-r.yaw),future=s.track.sample(r.d+28),bend=Math.abs(angle(Math.atan2(future.tx,future.tz)-Math.atan2(r.surface.tx,r.surface.tz))),target=clamp(43-r.id*.45-bend*23,26,42);
  return {throttle:r.speed<target+1,brake:r.speed>target+3,steer:clamp(-error*2.9,-1,1),drift:false};
 }
+function collideFence(s,r){
+ const surface=r.surface,side=Math.sign(r.lane),limit=s.track.fenceLane-1.3;
+ if(!surface.ground||r.y>surface.y+1.8||r.y<surface.y-1||Math.abs(r.lane)<=limit||!s.track.fenceAt(r.nearD,side))return;
+ const nx=-surface.tz*side,nz=surface.tx*side,penetration=Math.abs(r.lane)-limit,outward=Math.max(0,r.vx*nx+r.vz*nz);
+ r.x-=nx*penetration;r.z-=nz*penetration;r.lane=surface.lane=side*limit;
+ r.vx-=nx*outward*1.12;r.vz-=nz*outward*1.12;
+ if(outward>1.5&&r.wallContact<=0){r.vx*=.8;r.vz*=.8;r.wallContact=.45;r.boost=0;r.drift=0;s.effects.push({x:r.x+nx,y:surface.y+.7,z:r.z+nz,life:.3,maxLife:.3,type:'scrape'});if(r.id===0)s.events.push('ОГРАЖДЕНИЕ · СКОРОСТЬ СНИЖЕНА');}
+ r.speed=Math.hypot(r.vx,r.vz);
+}
 function drive(s,r,input,dt){
  if(tickRecovery(s,r,dt)||r.finishTime!==null)return;
  const cfg=r.cfg,speed=Math.hypot(r.vx,r.vz),wasGrounded=r.grounded,previousSurface=r.surface;
@@ -102,7 +112,7 @@ function drive(s,r,input,dt){
  if(!wantsDrift&&!r.drifting)r.drift=0;r.drifting=wantsDrift;
  r.x+=r.vx*dt;r.z+=r.vz*dt;
  const surface=s.track.nearest(r.x,r.z,r.nearD),delta=angle((surface.d-r.nearD)/s.length*Math.PI*2)*s.length/(Math.PI*2);
- r.d+=delta;r.nearD=surface.d;r.surface=surface;r.lane=surface.lane;
+ r.d+=delta;r.nearD=surface.d;r.surface=surface;r.lane=surface.lane;collideFence(s,r);
  if(Math.abs(r.lane)>s.track.width+.6){fall(s,r);return;}
  if(wasGrounded&&!surface.ground){r.grounded=false;r.vy=Math.max(0,(r.vx*previousSurface.tx+r.vz*previousSurface.tz)*previousSurface.slope);r.airTime=0;const gap=s.track.gapAt(surface.d);r.jumpOrigin=gap?r.d-(surface.d-(gap.start-62)):r.lastSafeD;if(r.id===0)s.events.push('ПОЛЁТ!');}
  if(!r.grounded){r.airTime+=dt;r.vy-=22*dt;r.y+=r.vy*dt;
@@ -115,7 +125,7 @@ function drive(s,r,input,dt){
 function step(s,input,dt){
  if(s.finished)return;dt=clamp(dt,0,.05);s.time+=dt;s.padCooldown=Math.max(0,s.padCooldown-dt);
  const p=s.racers[0];
- for(const r of s.racers){for(const key of ['boost','shield','stun','contact','throwAnim','hitAnim','landing'])r[key]=Math.max(0,r[key]-dt);r.itemAge+=dt;drive(s,r,r.id===0?input:botInput(s,r),dt);if(r.id>0&&r.item&&r.itemAge>2.8&&r.phase==='driving')useItem(s,r.id);}
+ for(const r of s.racers){for(const key of ['boost','shield','stun','contact','wallContact','throwAnim','hitAnim','landing'])r[key]=Math.max(0,r[key]-dt);r.itemAge+=dt;drive(s,r,r.id===0?input:botInput(s,r),dt);if(r.id>0&&r.item&&r.itemAge>2.8&&r.phase==='driving')useItem(s,r.id);}
  for(const box of s.pickups){box.cooldown=Math.max(0,box.cooldown-dt);if(box.cooldown>0)continue;for(const r of s.racers){if(r.item||!r.grounded||r.phase!=='driving')continue;const delta=wrap(r.nearD-box.d+s.length/2,s.length)-s.length/2;if(Math.abs(delta)<2.1&&Math.min(...[-5,0,5].map(l=>Math.abs(r.lane-l)))<1.9){r.item=['coconut','bomb','boost','shield'][Math.floor(random(s)*4)];r.itemAge=0;box.cooldown=1.8;if(r.id===0)s.events.push('ПРЕДМЕТ В РУКЕ · SHIFT — ИСПОЛЬЗОВАТЬ');break;}}}
  for(const r of s.racers)if(r.grounded&&r.phase==='driving'&&Math.abs(r.lane)<5)for(const d of s.track.pads){const delta=wrap(r.nearD-d+s.length/2,s.length)-s.length/2;if(Math.abs(delta)<2){r.boost=Math.max(r.boost,1.6*r.cfg.boost);}}
  for(let i=0;i<s.racers.length;i++)for(let j=i+1;j<s.racers.length;j++){const a=s.racers[i],b=s.racers[j];if(a.phase!=='driving'||b.phase!=='driving'||a.contact||b.contact||Math.abs(a.y-b.y)>2)continue;const dx=a.x-b.x,dz=a.z-b.z,dist=Math.hypot(dx,dz);if(dist<2.1&&dist>.001){const nx=dx/dist,nz=dz/dist,push=(2.1-dist)*.5;a.x+=nx*push;a.z+=nz*push;b.x-=nx*push;b.z-=nz*push;if(!a.shield){a.vx*=.8;a.vz*=.8;}if(!b.shield){b.vx*=.8;b.vz*=.8;}a.contact=b.contact=.6;}}
