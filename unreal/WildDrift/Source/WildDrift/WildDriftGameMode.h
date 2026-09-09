@@ -30,6 +30,7 @@ UCLASS()
 class AWildDriftHUD : public AHUD {
  GENERATED_BODY()
 public: virtual void DrawHUD() override;
+ bool TargetVisible=false;
  UPROPERTY() TObjectPtr<class UFont> NativeFont;
 };
 UCLASS()
@@ -56,9 +57,9 @@ public:
  UPROPERTY() TObjectPtr<class UExponentialHeightFogComponent> WeatherFog;
  double MotorPhase=0,SoundClock=0; bool AudioMuted=false;
  TArray<FVector> SnowOffsets; TArray<double> SmokeAge, MarkAge; int NextSmoke=0,NextMark=0;
- std::array<drift::Racer,6> Previous; double Accumulator=0,Clock=0,Countdown=0,NoticeAge=0,SmokeClock=0;
+ std::vector<drift::Racer> Previous; double Accumulator=0,Clock=0,Countdown=0,NoticeAge=0,SmokeClock=0;
  FString PreviousNotice,Error; FVector CameraAnchor; double CameraYaw=0,CameraY=0,CameraGrade=0;
- int Hero=0,Course=0,UIRevision=0; bool Verify=false; int VerifyStage=0; std::array<bool,7> VerifyKeys{}; double VerifyYaw=0;
+ int Hero=0,Course=0,Laps=3,Opponents=5,UIRevision=0; bool Verify=false; int VerifyStage=0,VerifyProjectile=0; std::array<bool,7> VerifyKeys{}; double VerifyYaw=0;
  int GalleryStage=0; bool Gallery=false; int SmokeStage=0; bool SmokeSuite=false; bool Racing=false,Paused=false,CameraReady=false,SmokeTest=false,AutoDrive=false,SmokeFinished=false;
  TSharedPtr<SWidget> Menu; TSharedPtr<struct FSlateBrush> CoverBrush;
  FString DriverField(int Index,const TCHAR* Field) const; FString CourseField(int Index,const TCHAR* Field) const;

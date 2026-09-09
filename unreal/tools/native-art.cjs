@@ -89,18 +89,56 @@ module.exports=function(T, A, C){
    }
   }
   bake(exhaust);
-  k.g.updateMatrixWorld(true);const bounds=new T.Box3();for(const o of [k.frame,...k.ws.map(w=>w.parent),k.body.getObjectByName('six-wheel-chassis')].filter(Boolean))bounds.union(new T.Box3().setFromObject(o));
-  k.collision={halfWidth:Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x))+.08,front:bounds.max.z+.08,rear:-bounds.min.z+.08};
+  k.g.updateMatrixWorld(true);
+  // A convex footprint follows the tires and tapered nose, without a padded rectangle.
+  const vertices=[],v=new T.Vector3();for(const o of [k.frame,...k.ws.map(w=>w.parent),k.body.getObjectByName('six-wheel-chassis')].filter(Boolean))o.traverse(m=>{if(!m.isMesh)return;const p=m.geometry.attributes.position;for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);if(v.y<1.25)vertices.push({x:v.x,z:v.z});}});
+  vertices.sort((a,b)=>a.x-b.x||a.z-b.z);const cross=(a,b,c)=>(b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x),half=points=>{const h=[];for(const p of points){while(h.length>1&&cross(h.at(-2),h.at(-1),p)<=0)h.pop();h.push(p);}return h;};
+  const hull=half(vertices).slice(0,-1).concat(half([...vertices].reverse()).slice(0,-1));
+  for(let i=hull.length-1;i>=0&&hull.length>4;i--){const a=hull[(i+hull.length-1)%hull.length],b=hull[i],c=hull[(i+1)%hull.length];if(Math.abs(cross(a,b,c))/Math.hypot(c.x-a.x,c.z-a.z)<.012)hull.splice(i,1);}
+  k.collision={halfWidth:Math.max(...hull.map(p=>Math.abs(p.x))),front:Math.max(...hull.map(p=>p.z)),rear:-Math.min(...hull.map(p=>p.z)),hull};
   for(const wheel of k.ws){const siblings=k.ws.filter(w=>w.parent.position.x===wheel.parent.position.x&&w!==wheel);for(const other of siblings)if(Math.abs(other.parent.position.z-wheel.parent.position.z)<1.15)throw Error('Overlapping axles');}
   return k;
  }
  function bankTrack(t){
   t.meta.subtitle=['Каменные арки · пепельный ветер','Корни и грибные сады · дождь','Ледяные арки и серпантин · метель','Шестерни над виадуком · жар и искры','Рунные кольца · ливень и гроза'][t.courseIndex];
-  t.banks=[];const base=t.sample;t.camber=t.segments.map((s,i)=>{
-   const a=base(s.d-12),b=base(s.d+12);let bank=Math.max(-.3,Math.min(.3,C.angle(Math.atan2(b.tx,b.tz)-Math.atan2(a.tx,a.tz))/24*17));
-   for(const g of t.gaps){const away=Math.max(g.start-32-s.d,s.d-g.end-32);bank*=Math.max(0,Math.min(1,away/18));}return bank;
+  const original=t.segments,oldIndex=t.index,oldLength=t.length,oldGaps=t.gaps,oldFences=t.fences,oldCrossings=t.overpasses;
+  let points=original.map(s=>s.a),rebuilt;
+  // Keep the authored route, but remove bends whose inside edge folds over itself.
+  for(let pass=0;pass<100;pass++){
+   rebuilt=C.makeTrack(points);let curvature=0;
+   rebuilt.segments.forEach((s,i)=>{const b=rebuilt.segments[(i+1)%points.length];curvature=Math.max(curvature,Math.abs(C.angle(Math.atan2(b.tx,b.tz)-Math.atan2(s.tx,s.tz)))/((s.len+b.len)/2));});
+   if(curvature<.055)break;if(pass===99)throw Error('Unable to smooth road '+t.id);
+   points=rebuilt.segments.map(s=>{const a=rebuilt.sample(s.d-8),b=rebuilt.sample(s.d+8);return {x:(a.x+2*s.a.x+b.x)/4,y:(a.y+2*s.a.y+b.y)/4,z:(a.z+2*s.a.z+b.z)/4};});
+  }
+  const remap=d=>{const wrapped=C.wrap(d,oldLength),i=oldIndex(wrapped),u=(wrapped-original[i].d)/original[i].len;return rebuilt.segments[i].d+u*rebuilt.segments[i].len;};
+  Object.assign(t,rebuilt);for(const g of oldGaps){const middle=remap((g.start+g.end)/2),size=g.end-g.start;t.gaps.push({start:middle-size/2,end:middle+size/2});}
+  t.fences=oldFences.map(f=>({...f,start:remap(f.start),end:remap(f.end)}));t.overpasses=oldCrossings.map(c=>({...c,lower:remap(c.lower),upper:remap(c.upper)}));
+  t.pads=[...t.gaps.map(g=>g.start-50),t.length*.32,t.length*.82];t.pickups=Array.from({length:14},(_,i)=>(i+.4)*t.length/14).filter(d=>!t.gaps.some(g=>d>g.start-40&&d<g.end+46));
+  t.bridgeAt=d=>t.gaps.find(g=>C.wrap(d,t.length)>=g.start-36&&C.wrap(d,t.length)<=g.end+42);
+  const raw=t.sample;t.camber=t.segments.map(s=>{
+   const a=raw(s.d-24),b=raw(s.d+24);let bank=Math.max(-.58,Math.min(.58,C.angle(Math.atan2(b.tx,b.tz)-Math.atan2(a.tx,a.tz))/48*34));
+   for(const g of t.gaps){const away=Math.max(g.start-40-s.d,s.d-g.end-46),u=Math.max(0,Math.min(1,away/30));bank*=u*u*(3-2*u);}return bank;
   });
-  t.bank=(d,lane)=>{d=C.wrap(d,t.length);const i=t.index(d),s=t.segments[i],rate=(t.camber[(i+1)%t.camber.length]-t.camber[i])/s.len,bank=t.camber[i]+rate*(d-s.d);return {y:bank*lane,crossSlope:bank,slope:rate*lane};};
+  const tangents=t.segments.map((s,i)=>{const a=t.segments[(i+t.segments.length-1)%t.segments.length],n=Math.hypot(a.tx+s.tx,a.tz+s.tz);return {x:(a.tx+s.tx)/n,z:(a.tz+s.tz)/n};});
+  t.sample=(d,lane=0)=>{
+   d=C.wrap(d,t.length);const i=t.index(d),j=(i+1)%t.segments.length,s=t.segments[i],u=(d-s.d)/s.len;
+   const reach=Math.min(.5,4/s.len),wa=Math.max(0,1-u/reach),wb=Math.max(0,1-(1-u)/reach);let tx=s.tx+(tangents[i].x-s.tx)*wa+(tangents[j].x-s.tx)*wb,tz=s.tz+(tangents[i].z-s.tz)*wa+(tangents[j].z-s.tz)*wb;const n=Math.hypot(tx,tz);tx/=n;tz/=n;
+   let y=s.a.y+(s.b.y-s.a.y)*u,slope=(s.b.y-s.a.y)/s.len;
+   for(const g of t.gaps){let u=0,L=0,a=0,b=0,m0=0,m1=0;
+    if(d>=g.start-36&&d<g.start){L=36;u=(d-g.start+36)/L;b=5.8;m1=.29;}else if(d>=g.start&&d<g.end){y+=5.8;continue;}
+    else if(d>=g.end&&d<g.end+42){L=42;u=(d-g.end)/L;a=5.8;m0=-.22;}else continue;
+    y+=(2*u*u*u-3*u*u+1)*a+(u*u*u-2*u*u+u)*L*m0+(-2*u*u*u+3*u*u)*b+(u*u*u-u*u)*L*m1;
+    slope+=((6*u*u-6*u)*a+(-6*u*u+6*u)*b)/L+(3*u*u-4*u+1)*m0+(3*u*u-2*u)*m1;
+   }
+   const rate=(t.camber[j]-t.camber[i])/s.len,bank=t.camber[i]+rate*(d-s.d);
+   return {x:s.a.x+(s.b.x-s.a.x)*u-tz*lane,z:s.a.z+(s.b.z-s.a.z)*u+tx*lane,y:y+bank*lane,tx,tz,d,lane,slope:slope+rate*lane,crossSlope:bank,ground:!t.gapAt(d)};
+  };
+  rebuilt.sample=t.sample;rebuilt.bridgeAt=t.bridgeAt;rebuilt.fences=t.fences;
+ }
+ function surfacePatch(world,t,name,d0,d1,l0,l1,lift,material){
+  const verts=[],uv=[],nd=Math.ceil((d1-d0)/.45),nl=Math.ceil((l1-l0)/.45);
+  for(let i=0;i<nd;i++)for(let j=0;j<nl;j++)for(const [a,b] of [[i,j],[i+1,j],[i,j+1],[i,j+1],[i+1,j],[i+1,j+1]]){const d=d0+(d1-d0)*a/nd,l=l0+(l1-l0)*b/nl,p=t.sample(d,l);verts.push(p.x,p.y+lift,p.z);uv.push(b/nl,a/nd);}
+  const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(verts,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.computeVertexNormals();const m=mesh(g,material,0,0,0,world);m.name=name;return m;
  }
  function alignSurface(g,p){
   const forward=new T.Vector3(p.tx,p.slope,p.tz).normalize(),normal=new T.Vector3(-p.tx*p.slope+p.tz*p.crossSlope,1,-p.tz*p.slope-p.tx*p.crossSlope).normalize();
@@ -109,6 +147,10 @@ module.exports=function(T, A, C){
  function reviseWorld(world,t,index){
   const gone=[];world.traverse(o=>{if(o.name==='gothic-city'||o.name==='distant-background'||o.name==='background-liquid')gone.push(o);});gone.forEach(o=>o.removeFromParent());
   for(const o of [...world.children])if(o.isSprite&&o.position.y>140)o.removeFromParent();
+  const white=mat(0xe9ded0,{roughness:.4}),dark=mat(0x222b32,{roughness:.5});
+  for(let j=0;j<20;j++)for(let k=0;k<3;k++)surfacePatch(world,t,'finish-marking',k*.8-1,(k+1)*.8-1,(j-10)*.9,(j-9)*.9,.105,(j+k)%2?white:dark);
+  const pad=mat(0x293944,{metalness:.55,roughness:.25}),glow=mat(t.meta.accent,{emissive:t.meta.accent,emissiveIntensity:2});
+  for(const d of t.pads){surfacePatch(world,t,'boost-pad',d-2.5,d+2.5,-4.5,4.5,.105,pad);for(let j=0;j<3;j++)for(let k=0;k<16;k++){const l=-3.6+k*.45,z=d+(j-1)*1.5-Math.abs(l)*.23;surfacePatch(world,t,'boost-chevron',z,z+.20,l,l+.45,.13,glow);}}
   const stone=mat(t.meta.stone,{roughness:.6}),steel=mat(0x667780,{metalness:.75,roughness:.3}),gold=mat(0xb49a6d,{metalness:.7,roughness:.3});
   const additions=group(world,'road-attached-scenery');
   // Tie every roadside structure to the edge with a stone shelf and diagonal brackets.
