@@ -56,8 +56,17 @@ int main(){auto tracks=drift::authoredTracks();assert(tracks.size()==5);drift::I
  // Letting go of drift changes neither heading nor traction abruptly at high speed.
  for(double speed:{38.,58.}){drift::Race slide;slide.reset(straight,0,{},3,0);auto& r=slide.racers[0];slide.place(r,100,speed);for(int i=0;i<55;i++)slide.step({true,false,true,.65},dt);
   assert(r.driftBlend>.8&&std::abs(r.slip)>.1);double slipBefore=std::abs(r.slip),blend=r.driftBlend;
-  for(int i=0;i<100;i++){double yaw=r.yaw,travel=std::atan2(r.vx,r.vz);slide.step(gas,dt);assert(std::abs(drift::angle(r.yaw-yaw))<.018);assert(std::abs(drift::angle(std::atan2(r.vx,r.vz)-travel))<.018);if(i==0)assert(r.driftBlend>blend*.97);}
+  for(int i=0;i<100;i++){double yaw=r.yaw,travel=std::atan2(r.vx,r.vz);slide.step(gas,dt);assert(std::abs(drift::angle(r.yaw-yaw))<.018);assert(std::abs(drift::angle(std::atan2(r.vx,r.vz)-travel))<.018);if(i==0)assert(r.driftBlend>blend*.94);}
   assert(std::abs(r.slip)<slipBefore*.65&&r.phase==drift::Phase::Driving);
+ }
+ // Steering must bend the travel path, both normally and immediately after a drift.
+ for(double speed:{25.,46.,65.})for(bool afterDrift:{false,true}){
+  drift::Race turn;turn.reset(straight,0,{},3,0);auto& r=turn.racers[0];turn.place(r,100,speed);
+  if(afterDrift)for(int i=0;i<72;i++)turn.step({true,false,true,.6},dt);
+  double travel=std::atan2(r.vx,r.vz);
+  for(int i=0;i<90;i++){turn.step({true,false,false,.8},dt);r.lane=0;} // Open skidpad, no offroad penalty.
+  double arc=std::abs(drift::angle(std::atan2(r.vx,r.vz)-travel));
+  assert(arc>.42&&std::abs(r.slip)<.14&&r.phase==drift::Phase::Driving);
  }
  std::cout<<"Native core: manual steering, real drift, five circuits, failed jumps, respawn, 70% guidance, RPG, car-space slope orientation, smooth flight, tight hull collisions, continuous road edges, smooth ramp joins, 1-10 laps, 0-8 opponents, progressive hit recovery and drift release passed.\n";
 }

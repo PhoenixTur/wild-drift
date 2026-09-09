@@ -123,16 +123,17 @@ struct Race {
  void collideFence(Racer& r){auto& p=r.surface;int side=r.lane>0?1:-1;double forward=-std::sin(r.yaw)*p.tz+std::cos(r.yaw)*p.tx,right=std::cos(r.yaw)*p.tz+std::sin(r.yaw)*p.tx;double radius=std::abs(forward)*(r.shape.front+r.shape.rear)*.5+std::abs(right)*r.shape.halfWidth+forward*side*(r.shape.front-r.shape.rear)*.5;double limit=track->fenceLane-radius;if(!p.ground||r.y>p.y+1.8||r.y<p.y-1||std::abs(r.lane)<=limit||!track->fenceAt(r.nearD,side))return;double nx=-p.tz*side,nz=p.tx*side,penetration=std::abs(r.lane)-limit,outward=std::max(0.,r.vx*nx+r.vz*nz);r.x-=nx*penetration;r.z-=nz*penetration;r.lane=p.lane=side*limit;r.vx-=nx*outward*1.12;r.vz-=nz*outward*1.12;if(outward>1.5&&r.wallContact<=0){r.vx*=.8;r.vz*=.8;r.wallContact=.45;r.boost=r.drift=0;effect({r.x+nx,p.y+.7,r.z+nz},.3,2);if(r.id==0)notice="ОГРАЖДЕНИЕ · СКОРОСТЬ СНИЖЕНА";}r.speed=length(r.vx,r.vz);}
  void drive(Racer& r,Input input,double dt){if(recovery(r,dt)||std::isfinite(r.finishTime))return;const auto cfg=r.cfg;double speed=length(r.vx,r.vz);bool wasGrounded=r.grounded,wantsDrift=input.drift&&speed>15&&r.grounded;auto previous=r.surface;
   r.steering+=(clamp(input.steer,-1,1)-r.steering)*(1-std::exp(-cfg.response*dt));
-  r.driftBlend+=((wantsDrift?1.:0.)-r.driftBlend)*(1-std::exp(-(wantsDrift?5.:1.8)*dt));
-  // Lateral tire force and yaw response are bounded at speed; grip returns over time.
+  r.driftBlend+=((wantsDrift?1.:0.)-r.driftBlend)*(1-std::exp(-(wantsDrift?5.:7.)*dt));
+  // Normal tires can supply the requested cornering force, including downhill banking.
+  // Drift reduces grip continuously; releasing it restores traction without rotating velocity.
   double yawTarget=-r.steering*1.8*cfg.handling*clamp(speed/10,0,1)*(1+.2*r.driftBlend)*(r.grounded?1:.13);
-  yawTarget=clamp(yawTarget,-(30+12*r.driftBlend)/std::max(18.,speed),(30+12*r.driftBlend)/std::max(18.,speed));
-  r.yawRate+=(yawTarget-r.yawRate)*(1-std::exp(-6*dt));r.yaw=angle(r.yaw+r.yawRate*dt);double fx=std::sin(r.yaw),fz=std::cos(r.yaw),rx=-fz,rz=fx;
+  yawTarget=clamp(yawTarget,-(52-10*r.driftBlend)/std::max(18.,speed),(52-10*r.driftBlend)/std::max(18.,speed));
+  r.yawRate+=(yawTarget-r.yawRate)*(1-std::exp(-9*dt));r.yaw=angle(r.yaw+r.yawRate*dt);double fx=std::sin(r.yaw),fz=std::cos(r.yaw),rx=-fz,rz=fx;
   if(r.grounded){double forward=r.vx*fx+r.vz*fz,lateral=r.vx*rx+r.vz*rz;bool offroad=std::abs(r.lane)>9.2;
-   double grip=offroad?3.5:10-8.35*r.driftBlend,recoveryFactor=r.hitDuration>0?1-.65*clamp(r.stun/r.hitDuration,0,1):1;
+   double grip=offroad?9.:18.-15*r.driftBlend,recoveryFactor=r.hitDuration>0?1-.65*clamp(r.stun/r.hitDuration,0,1):1;
    double accel=input.brake?-cfg.braking:input.throttle?cfg.acceleration*recoveryFactor:-5;
    forward=std::max(0.,forward+(accel-previous.slope*10-forward*forward*.0007/cfg.aero)*dt);
-   double lateralForce=clamp(lateral*grip,-(offroad?16.:32.-15*r.driftBlend),offroad?16.:32.-15*r.driftBlend);
+   double lateralForce=clamp(lateral*grip,-(offroad?45.:95.-61*r.driftBlend),offroad?45.:95.-61*r.driftBlend);
    lateral-=lateralForce*dt;double max=offroad?cfg.offroadSpeed:cfg.speed+(r.boost>0?19:0);if(forward>max)forward=std::max(max,forward-(std::max(0.,accel)+25)*dt);
    r.vx=fx*forward+rx*lateral+previous.tz*previous.crossSlope*18*dt;r.vz=fz*forward+rz*lateral-previous.tx*previous.crossSlope*18*dt;}
   r.speed=length(r.vx,r.vz);r.slip=r.speed>3?angle(std::atan2(r.vx,r.vz)-r.yaw):0;bool drifting=wantsDrift&&std::abs(r.slip)>.13;if(drifting&&r.id==0)driftSeconds+=dt;if(drifting)r.drift=std::min(2.5,r.drift+dt*std::min(1.6,std::abs(r.slip)*2.2)*cfg.driftGain);if(!input.drift&&r.drifting&&r.grounded){if(r.drift>.55){r.boost=(1.1+r.drift*.5)*cfg.boost;if(r.id==0)notice=r.drift>1.7?"СУПЕРДРИФТ!":"ДРИФТ · ТУРБО!";}r.drift=0;}if(!wantsDrift&&!r.drifting)r.drift=0;r.drifting=wantsDrift;r.x+=r.vx*dt;r.z+=r.vz*dt;

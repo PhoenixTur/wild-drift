@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/HUD.h"
 #include "RaceCore.h"
+#include "ProceduralMeshComponent.h"
 #include "WildDriftGameMode.generated.h"
 class UProceduralMeshComponent;
 class UMaterialInstanceDynamic;
@@ -12,7 +13,7 @@ class UTexture2D;
 class SWidget;
 class FJsonObject;
 struct FDriftMesh {
- TArray<FVector> Vertices, Normals; TArray<FVector2D> UVs; TArray<FLinearColor> Colors; TArray<int32> Indices;
+ TArray<FVector> Vertices, Normals; TArray<FVector2D> UVs; TArray<FLinearColor> Colors; TArray<int32> Indices; TArray<FProcMeshTangent> Tangents;
 };
 struct FDriftPart {
  USceneComponent* Component=nullptr; FTransform Rest; FString Name; TSharedPtr<FDriftMesh> Mesh;
@@ -42,6 +43,7 @@ public:
  TSharedPtr<FJsonObject> Catalog; TMap<FString,TSharedPtr<FDriftMesh>> Meshes;
  UPROPERTY() TArray<TObjectPtr<UMaterialInstanceDynamic>> Materials;
  UPROPERTY() TArray<TObjectPtr<UTexture2D>> Textures;
+ UPROPERTY() TArray<TObjectPtr<UTexture2D>> ItemIcons;
  UPROPERTY() TObjectPtr<AWildDriftModel> WorldModel;
  UPROPERTY() TArray<TObjectPtr<AWildDriftModel>> Karts;
  UPROPERTY() TObjectPtr<AActor> CameraActor;
@@ -59,7 +61,7 @@ public:
  TArray<FVector> SnowOffsets; TArray<double> SmokeAge, MarkAge; int NextSmoke=0,NextMark=0;
  std::vector<drift::Racer> Previous; double Accumulator=0,Clock=0,Countdown=0,NoticeAge=0,SmokeClock=0;
  FString PreviousNotice,Error; FVector CameraAnchor; double CameraYaw=0,CameraY=0,CameraGrade=0;
- int Hero=0,Course=0,Laps=3,Opponents=5,UIRevision=0; bool Verify=false; int VerifyStage=0,VerifyProjectile=0; std::array<bool,7> VerifyKeys{}; double VerifyYaw=0;
+ int Hero=0,Course=0,Laps=3,Opponents=5,MenuPage=0,UIRevision=0; bool Verify=false; int VerifyStage=0,VerifyProjectile=0; std::array<bool,7> VerifyKeys{}; double VerifyYaw=0;
  int GalleryStage=0; bool Gallery=false; int SmokeStage=0; bool SmokeSuite=false; bool Racing=false,Paused=false,CameraReady=false,SmokeTest=false,AutoDrive=false,SmokeFinished=false;
  TSharedPtr<SWidget> Menu; TSharedPtr<struct FSlateBrush> CoverBrush;
  FString DriverField(int Index,const TCHAR* Field) const; FString CourseField(int Index,const TCHAR* Field) const;

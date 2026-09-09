@@ -1,6 +1,6 @@
 // Native art revisions reuse the authored mesh primitives; the web game is left intact.
-module.exports=function(T, A, C){
- const {mesh,ellipsoid:ball,softBox,tube,strut,mat,bakeStatic:bake,label}=A;
+module.exports=function(T, A, C, surface){
+ const {mesh,ellipsoid:ball,softBox,tube,strut,mat,bakeStatic:bake,label,sculptedShell}=A;
  const names=['Гризз','Громмак','Аэлир','Ноктис','Рейн','Борин','Одноглаз','Зара'];
  const kinds=['Гоблин-механик','Орк-гонщик','Светлый эльф','Тёмный эльф','Человек-пилот','Дворф-инженер','Циклоп-тяжеловес','Тифлинг-алхимик'];
  const skins=[0x789b50,0x658365,0xe8cbb0,0x827798,0xbb8a68,0xcda080,0x9c9377,0xa76663];
@@ -10,8 +10,43 @@ module.exports=function(T, A, C){
   // Remove the complete old rider, including every animal detail and all fabric/tail geometry.
   const oldRider=k.body.children.find(o=>o!==k.frame&&o.isGroup);
   for(const o of [oldRider,k.head,k.cape,k.tail,k.steeringPivot,k.flame,k.items.boost,k.items.shield])o?.removeFromParent();
-  const skinMat=mat(skins[hero],{roughness:.67}),jacket=mat(suits[hero],{roughness:.74}),steel=mat(0x71818a,{metalness:.75,roughness:.28}),gold=mat(0xb79a62,{metalness:.8,roughness:.28}),rubber=mat(0x202b30,{roughness:.8}),ivory=mat(0xefe0b9,{roughness:.45});
-  const accent=mat(C.DRIVERS[hero].glow,{emissive:C.DRIVERS[hero].glow,emissiveIntensity:1.3,metalness:.25,roughness:.25});
+  const skinMat=surface(skins[hero],'skin'),jacket=surface(suits[hero],'leather'),steel=surface(0x71818a,'steel'),gold=surface(0xa38e68,'steel'),rubber=surface(0x1e2527,'rubber'),ivory=mat(0xd5c6a5,{roughness:.68});
+  const paint=surface([0x465b43,0x384b45,0x7f909b,0x3c364e,0x3b4e60,0x685342,0x535850,0x5f4653][hero]);
+  // One continuous bonnet and rear deck surround an open cockpit. No stacked shells.
+  k.frame.removeFromParent();k.frame=group(k.body,'frame');const frame=k.frame;
+  const six=k.ws.length===6,front=six?2.65:2.05+[.05,0,.3,.2,.1,.05,0,.25][hero],rear=skin===1?-2.22:six?-2.2:-1.65;
+  for(const w of k.ws)w.parent.position.x=Math.sign(w.parent.position.x)*Math.max(1.16,Math.abs(w.parent.position.x));
+  const undertray=sculptedShell([[.02,1,rear+.05],[.60,1,-1],[.63,1,.25],[.47,1,1.25],[.02,1,front-.06]],steel,frame);undertray.scale.y=.4;
+  sculptedShell([[.01,.66,front],[.26,.71,front-.15],[.46,.78,1.35],[.49,.83,.9],[.38,.83,.72]],paint,frame);
+  sculptedShell([[.02,.68,rear],[.48,.79,rear+.28],[.56,.89,-1.19],[.52,.98,-.99]],paint,frame);
+  for(const side of [-1,1]){
+   softBox(.15,.32,1.72,paint,side*.61,.71,-.12,frame,true);
+   tube([[side*.59,.92,-.97],[side*.60,.92,-.35],[side*.58,.91,.68]],.018,gold,frame);
+   for(let j=0;j<5;j++)softBox(.019,.10,.07,rubber,side*.498,.8,1.03+j*.085,frame);
+   for(const wheel of k.ws.filter(w=>Math.sign(w.parent.position.x)===side)){const p=wheel.parent.position;strut([side*.50,.49,p.z-.12],[p.x,.54,p.z],.044,steel,frame);}
+   for(const z of [rear+.23,front-.24]){const lamp=group(frame,'lamp');lamp.position.set(side*.25,.76,z);lamp.rotation.y=z<0?Math.PI:0;mesh(new T.CylinderGeometry(.084,.084,.07,28),steel,0,0,0,lamp).rotation.x=Math.PI/2;mesh(new T.CircleGeometry(.068,24),mat(z<0?0x9d342c:0xd2c7a2,{emissive:z<0?0x7e211a:0x9d9276,emissiveIntensity:.32,roughness:.24}),0,0,.04,lamp);}
+   // Small fasteners sit on the sill surface, not through neighbouring panels.
+   for(let j=0;j<7;j++)ball(side*.691,.74,-.82+j*.22,.014,.024,.024,gold,frame);
+  }
+  softBox(.67,.16,.69,rubber,0,.9,-.37,frame,true);softBox(.68,.62,.14,jacket,0,1.22,-.91,frame,true);
+  if(skin===1){for(const side of [-1,1])tube([[side*.54,.98,-.96],[side*.57,1.40,-1.28],[side*.39,1.36,rear+.19]],.045,gold,frame);softBox(.98,.06,.34,paint,0,1.32,rear+.2,frame,true);}
+  if(skin===2){for(const side of [-1,1])strut([side*.63,.65,-.87],[side*.63,1.54,-1.12],.053,steel,frame);tube([[-.63,1.54,-1.12],[0,1.77,-1.15],[.63,1.54,-1.12]],.055,steel,frame);softBox(1.17,.18,.16,steel,0,.53,front-.06,frame,true);}
+  // Distinct engine covers and bonnet profiles retain each driver's own silhouette.
+  if(hero===1||hero===6){for(let j=0;j<4;j++)softBox(.67,.11,.10,steel,0,1.03,-1.14-j*.16,frame,true);}
+  else if(hero===2||hero===3){const fin=softBox(.045,.24,.75,gold,0,1.04,1.34,frame,true);fin.rotation.x=-.1;}
+  else if(hero===5){for(const side of [-1,1])mesh(new T.CylinderGeometry(.13,.13,.42,24),steel,side*.33,1.03,-1.4,frame,true).rotation.x=Math.PI/2;}
+  else if(hero===7){for(const side of [-1,1])ball(side*.30,1.04,-1.39,.14,.16,.20,mat(0x486e69,{metalness:.3,roughness:.22}),frame,true);}
+  bake(frame);
+  for(const w of k.ws){
+   const pivot=w.parent;for(const child of [...pivot.children])if(child!==w)child.removeFromParent();
+   const fender=group(pivot,'arched-fender'),verts=[],uv=[],r=skin===1?.71:.67,width=skin===1?.33:.30;
+   for(let j=0;j<48;j++)for(const [a,b] of [[j,0],[j+1,0],[j,1],[j,1],[j+1,0],[j+1,1]]){const angle=-.12+a/48*(Math.PI+.24);verts.push(b?width:-width,Math.sin(angle)*r,-Math.cos(angle)*r);uv.push(b,a/48);}
+   const geom=new T.BufferGeometry();geom.setAttribute('position',new T.Float32BufferAttribute(verts,3));geom.setAttribute('uv',new T.Float32BufferAttribute(uv,2));geom.computeVertexNormals();paint.side=T.DoubleSide;mesh(geom,paint,0,0,0,fender,true);
+   for(const side of [-1,1]){const edge=[];for(let j=0;j<=48;j++){const a=-.12+j/48*(Math.PI+.24);edge.push([side*width,Math.sin(a)*r,-Math.cos(a)*r]);}tube(edge,.018,skin===2?steel:gold,fender);}
+   bake(fender);w.traverse(o=>{if(!o.isMesh)return;const old=o.material;o.material=surface(old.color.getHex(),old.metalness>.5?'steel':'rubber');});
+  }
+
+  const accent=mat(C.DRIVERS[hero].glow,{emissive:C.DRIVERS[hero].glow,emissiveIntensity:.35,metalness:.25,roughness:.25});
   const rider=group(k.body,'racing-suit'),wide=hero===1||hero===6?1.13:hero===2||hero===3?.92:1;
   ball(0,1.51,-.4,.37*wide,.49,.29,jacket,rider,true);
   softBox(.6*wide,.47,.14,steel,0,1.62,-.10,rider,true);
@@ -28,7 +63,7 @@ module.exports=function(T, A, C){
   mesh(new T.CircleGeometry(.075,24),accent,0,1.72,.025,rider);
   mesh(new T.PlaneGeometry(.16,.2),label(String(hero+1),'#26343d','#eddbab',64,96),0,1.48,.004,rider);
   bake(rider);
-  k.head=group(k.body,'head');k.head.position.set(0,2.16,-.31);
+  k.head=group(k.body,'head');k.head.position.set(0,2.15,-.31);k.head.scale.set(.88,.99,.9);
   const head=k.head,large=hero===1||hero===6?1.12:1;
   ball(0,.03,0,.305*large,.38*large,.29,skinMat,head,true);
   ball(0,-.18,.11,.26*large,.19,.24,skinMat,head,true);
@@ -36,11 +71,11 @@ module.exports=function(T, A, C){
   for(const side of [-1,1]){
    ball(side*.19,-.1,.24,.1,.09,.08,skinMat,head,true);
    if([0,1,2,3,7].includes(hero)){
-    const ear=ball(side*.37,.06,-.01,hero===0?.27:.22,.105,.06,skinMat,head,true);ear.rotation.z=side*.36;
+    const ear=ball(side*.37,.06,-.01,hero===0?.20:.16,.105,.06,skinMat,head,true);ear.rotation.z=side*.36;
     tube([[side*.27,.05,.045],[side*.43,.09,.05],[side*.55,.15,.002]],.014,hero===3?mat(0xaaa0bb):skinMat,head);
    }else ball(side*.3,.02,-.015,.065,.105,.06,skinMat,head,true);
   }
-  const hair=mat([0x293524,0x283530,0xe9e0c9,0xd1cbdc,0x302b28,0x7c462e,0x4b4a3d,0x292e39][hero],{roughness:.85});
+  const hair=surface([0x293524,0x283530,0xe9e0c9,0xd1cbdc,0x302b28,0x7c462e,0x4b4a3d,0x292e39][hero],'leather');
   if(hero!==6){ball(0,.23,-.055,.31,.19,.28,hair,head,true);for(let i=0;i<9;i++){const a=-1.5+i*.37;const lock=ball(Math.sin(a)*.245,.23-i%3*.027,.08+Math.cos(a)*.12,.08,.15,.07,hair,head);lock.rotation.z=-a*.3;}}
   if(hero===0||hero===4||hero===5){
    const cap=mesh(new T.SphereGeometry(.335,40,28,0,Math.PI*2,0,Math.PI*.46),jacket,0,.04,0,head,true);cap.scale.set(1,1.28,1.02);
@@ -55,9 +90,9 @@ module.exports=function(T, A, C){
   tube([[-.13,-.17,.332],[0,-.19,.354],[.13,-.17,.332]],.011,mat(0x503e3b),head);
   bake(head);k.eyes=[];
   for(const side of hero===6?[0]:[-1,1]){
-   const eye=group(head,'eye-'+k.eyes.length);eye.position.set(side*.135,.075,hero===6?.282:.26);const w=hero===6?.14:.082;
-   ball(0,0,0,w,hero===6?.125:.057,.047,ivory,eye);
-   ball(0,0,.043,w*.5,w*.55,.018,accent,eye);
+   const eye=group(head,'eye-'+k.eyes.length);eye.position.set(side*.135,.075,hero===6?.282:.26);const w=hero===6?.105:.062;
+   ball(0,0,0,w,hero===6?.084:.038,.047,ivory,eye);
+   ball(0,0,.043,w*.48,w*.48,.018,mat([0x47513a,0x684f31,0x5e797f,0x787188,0x665c4a,0x756147,0x877143,0x806641][hero],{roughness:.4}),eye);
    ball(0,0,.061,w*.24,w*.38,.011,mat(0x142128),eye);
    ball(-.016,.02,.07,.012,.015,.007,mat(0xffffff),eye);
    ball(0,hero===6?.125:.064,-.009,w*1.17,.035,.06,skinMat,eye);
@@ -71,9 +106,7 @@ module.exports=function(T, A, C){
   softBox(.74,.13,.22,rubber,0,1.13,.70,cockpit,true);
   for(const x of [-.2,0,.2]){const gauge=group(cockpit,'gauge');gauge.position.set(x,1.21,.72);gauge.rotation.x=.8;mesh(new T.CircleGeometry(.079,28),mat(0x10252a),0,0,0,gauge);mesh(new T.TorusGeometry(.083,.013,10,28),gold,0,0,0,gauge);strut([0,0,.014],[.027,.044,.014],.007,accent,gauge);}
   bake(cockpit);
-  // Six wheels need six separate arches and a longer chassis, with no adjacent tire overlap.
-  if(k.ws.length===6){k.frame.scale.z*=1.17;const chassis=group(k.body,'six-wheel-chassis');for(const side of [-1,1]){softBox(.2,.22,4.35,steel,side*.72,.42,0,chassis,true);for(const z of [-1.76,0,1.76])strut([side*.25,.48,z],[side*1.14,.52,z],.058,gold,chassis);}bake(chassis);}
-  const exhaust=group(k.body,'rear-exhausts');const tail=skin===1?-2.45:k.ws.length===6?-2.25:-1.88;
+  const exhaust=group(k.body,'rear-exhausts');const tail=skin===1?-2.45:k.ws.length===6?-2.55:-1.88;
   for(const side of [-1,1]){
    const count=hero===6||skin===2?2:1;
    for(let j=0;j<count;j++){
@@ -89,6 +122,7 @@ module.exports=function(T, A, C){
    }
   }
   bake(exhaust);
+  for(const arm of k.arms){arm.upper.material=jacket;arm.lower.material=jacket;arm.hand.traverse(o=>{if(o.isMesh)o.material=rubber;});}
   k.g.updateMatrixWorld(true);
   // A convex footprint follows the tires and tapered nose, without a padded rectangle.
   const vertices=[],v=new T.Vector3();for(const o of [k.frame,...k.ws.map(w=>w.parent),k.body.getObjectByName('six-wheel-chassis')].filter(Boolean))o.traverse(m=>{if(!m.isMesh)return;const p=m.geometry.attributes.position;for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);if(v.y<1.25)vertices.push({x:v.x,z:v.z});}});
@@ -115,10 +149,17 @@ module.exports=function(T, A, C){
   t.fences=oldFences.map(f=>({...f,start:remap(f.start),end:remap(f.end)}));t.overpasses=oldCrossings.map(c=>({...c,lower:remap(c.lower),upper:remap(c.upper)}));
   t.pads=[...t.gaps.map(g=>g.start-50),t.length*.32,t.length*.82];t.pickups=Array.from({length:14},(_,i)=>(i+.4)*t.length/14).filter(d=>!t.gaps.some(g=>d>g.start-40&&d<g.end+46));
   t.bridgeAt=d=>t.gaps.find(g=>C.wrap(d,t.length)>=g.start-36&&C.wrap(d,t.length)<=g.end+42);
-  const raw=t.sample;t.camber=t.segments.map(s=>{
-   const a=raw(s.d-24),b=raw(s.d+24);let bank=Math.max(-.58,Math.min(.58,C.angle(Math.atan2(b.tx,b.tz)-Math.atan2(a.tx,a.tz))/48*34));
+  const raw=t.sample,n=t.segments.length,curves=t.segments.map(s=>{const a=raw(s.d-12),b=raw(s.d+12);return C.angle(Math.atan2(b.tx,b.tz)-Math.atan2(a.tx,a.tz))/24;});
+  const signs=curves.map(c=>Math.abs(c)>.0005?Math.sign(c):0);let begin=signs.findIndex((v,i)=>v!==signs[(i+n-1)%n]);if(begin<0)begin=0;
+  t.turns=[];for(let k=0;k<n;){const i=(begin+k)%n,sign=signs[i],start=t.segments[i].d;let length=0,angle=0;do{const j=(begin+k)%n;length+=t.segments[j].len;angle+=curves[j]*t.segments[j].len;k++;}while(k<n&&signs[(begin+k)%n]===sign);if(sign)t.turns.push({start,end:start+length,angle});}
+  t.camber=t.segments.map((s,i)=>{let bank=0;for(const turn of t.turns){const u=C.wrap(s.d-turn.start,t.length),len=turn.end-turn.start;if(u<=len&&Math.abs(turn.angle)>Math.PI/6){const fade=Math.min(1,u/18,(len-u)/18);bank=Math.max(-.58,Math.min(.58,curves[i]*34))*Math.max(0,fade*fade*(3-2*fade));}}
    for(const g of t.gaps){const away=Math.max(g.start-40-s.d,s.d-g.end-46),u=Math.max(0,Math.min(1,away/30));bank*=u*u*(3-2*u);}return bank;
   });
+  // Fence both sides of every bend, including gentle bends that no longer bank.
+  const spans=[];for(const turn of t.turns){let a=turn.start-14,b=turn.end+14;if(a<0){spans.push([a+t.length,t.length]);a=0;}if(b>t.length){spans.push([0,b-t.length]);b=t.length;}spans.push([a,b]);}
+  for(const f of t.fences)spans.push([f.start,f.end]);spans.sort((a,b)=>a[0]-b[0]);const merged=[];for(const span of spans){if(merged.length&&span[0]<=merged.at(-1)[1])merged.at(-1)[1]=Math.max(span[1],merged.at(-1)[1]);else merged.push(span);}
+  let solid=merged;for(const g of t.gaps)solid=solid.flatMap(([a,b])=>b<=g.start||a>=g.end?[[a,b]]:[[a,Math.min(b,g.start)],[Math.max(a,g.end),b]].filter(([l,r])=>r-l>.1));
+  t.fences=solid.flatMap(([a,b])=>Array.from({length:Math.ceil((b-a)/75)},(_,i)=>({start:a+i*75,end:Math.min(b,a+(i+1)*75)}))).flatMap(span=>[-1,1].map(side=>({...span,side})));
   const tangents=t.segments.map((s,i)=>{const a=t.segments[(i+t.segments.length-1)%t.segments.length],n=Math.hypot(a.tx+s.tx,a.tz+s.tz);return {x:(a.tx+s.tx)/n,z:(a.tz+s.tz)/n};});
   t.sample=(d,lane=0)=>{
    d=C.wrap(d,t.length);const i=t.index(d),j=(i+1)%t.segments.length,s=t.segments[i],u=(d-s.d)/s.len;
@@ -152,13 +193,26 @@ module.exports=function(T, A, C){
   const pad=mat(0x293944,{metalness:.55,roughness:.25}),glow=mat(t.meta.accent,{emissive:t.meta.accent,emissiveIntensity:2});
   for(const d of t.pads){surfacePatch(world,t,'boost-pad',d-2.5,d+2.5,-4.5,4.5,.105,pad);for(let j=0;j<3;j++)for(let k=0;k<16;k++){const l=-3.6+k*.45,z=d+(j-1)*1.5-Math.abs(l)*.23;surfacePatch(world,t,'boost-chevron',z,z+.20,l,l+.45,.13,glow);}}
   const stone=mat(t.meta.stone,{roughness:.6}),steel=mat(0x667780,{metalness:.75,roughness:.3}),gold=mat(0xb49a6d,{metalness:.7,roughness:.3});
-  const additions=group(world,'road-attached-scenery');
-  // Tie every roadside structure to the edge with a stone shelf and diagonal brackets.
-  world.updateMatrixWorld(true);const anchors=[];world.traverse(o=>{if(!o.isGroup||o.position.length()<1||o.name==='raven')return;const v=o.getWorldPosition(new T.Vector3()),p=t.nearest(v.x,v.z,undefined,v.y);if(Math.abs(p.lane)>11.3&&Math.abs(p.lane)<30&&Math.abs(p.y-v.y)<6)anchors.push(p);});
-  for(const p of anchors){const side=Math.sign(p.lane),edge=t.sample(p.d,side*10.95),outer=t.sample(p.d,p.lane+side*1.8),mid=new T.Vector3(edge.x+outer.x,edge.y+outer.y-.45,edge.z+outer.z).multiplyScalar(.5),g=group(additions,'edge-bracket');g.position.copy(mid);g.rotation.y=Math.atan2(p.tx,p.tz);const width=Math.hypot(edge.x-outer.x,edge.z-outer.z);alignSurface(g,t.sample(p.d,(side*10.95+p.lane+side*1.8)*.5));softBox(width,.5,4.6,stone,0,0,0,g,true);for(const z of [-1.45,1.45])strut([side*width*.5,-2.4,z],[-side*width*.43,-.23,z],.16,steel,g);bake(g);}
+  const additions=group(world,'landscape-scenery');
+  const bridge=d=>t.bridgeAt(d)||t.overpasses.some(c=>Math.abs(C.wrap(d-c.upper+t.length/2,t.length)-t.length/2)<72);
+  // Keep the upper crossing open; statues belong on the approaches, not on its deck.
+  world.updateMatrixWorld(true);const bridgeProps=[];world.traverse(o=>{if(o.position.length()<1||o.name==='raven')return;const v=o.getWorldPosition(new T.Vector3()),p=t.nearest(v.x,v.z,undefined,v.y);if(Math.abs(p.lane)>11.3&&Math.abs(p.lane)<30&&Math.abs(p.y-v.y)<12&&bridge(p.d))bridgeProps.push(o);});bridgeProps.forEach(o=>o.removeFromParent());
+  // Broad, continuous shoulders replace the suspended shelves. Their inner plateau
+  // shares the road's bank, so the existing statue plinths and tower bases sit in soil.
+  const earth=surface([0x625c50,0x3c5142,0xb6c3c8,0x51453b,0x4c5960][index],'stone'),lanes=[10.9,13,16,19,24,31,40,52,65];earth.side=T.DoubleSide;
+  for(const side of [-1,1]){
+   const verts=[],uv=[],colors=[],steps=Math.ceil(t.length/4),cache=new Map();
+   const vertex=(i,j)=>{const key=i+','+j;if(cache.has(key))return cache.get(key);const d=i/steps*t.length,l=lanes[j],p=t.sample(d,side*l),center=t.sample(d);let y=p.y-.22;
+    if(l>19){const u=(l-19)/46,hill=Math.sin(u*Math.PI)*4.5*(.6+.4*Math.sin(d*.021+side));y=t.sample(d,side*19).y-.22+hill-u*u*22;}
+    // Lower road cuts always win over a hillside at a crossing or nearby hairpin.
+    const nearest=t.nearest(p.x,p.z);if(Math.abs(nearest.lane)<12&&Math.abs(C.wrap(nearest.d-d+t.length/2,t.length)-t.length/2)>30)y=Math.min(y,nearest.y-1);
+    const v={x:p.x,y,z:p.z,d,l,shade:.81+.10*Math.sin(d*.033+l*.15)+.06*Math.cos(d*.15-l*.27)};cache.set(key,v);return v;};
+   for(let i=0;i<steps;i++){const d=(i+.5)/steps*t.length;if(bridge(d))continue;for(let j=0;j<lanes.length-1;j++)for(const [a,b] of [[i,j],[i+1,j],[i,j+1],[i,j+1],[i+1,j],[i+1,j+1]]){const p=vertex(a,b);verts.push(p.x,p.y,p.z);uv.push(p.d/8,p.l/8);colors.push(p.shade,p.shade,p.shade);}}
+   const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(verts,3));geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));geo.setAttribute('color',new T.Float32BufferAttribute(colors,3));geo.computeVertexNormals();earth.vertexColors=true;const terrain=mesh(geo,earth,0,0,0,additions,true);terrain.name='roadside-hills';
+  }
   // The five courses have different built silhouettes as well as different weather.
   for(let i=0;i<18;i++){
-   const d=(i+.55)/18*t.length;if(t.bridgeAt(d))continue;const side=i%2?1:-1,p=t.sample(d,side*11.1),g=group(additions,'theme-scenery');g.position.set(p.x,p.y,p.z);g.rotation.y=Math.atan2(p.tx,p.tz);
+   const d=(i+.55)/18*t.length;if(bridge(d))continue;const side=i%2?1:-1,p=t.sample(d,side*15.8),g=group(additions,'theme-scenery');g.position.set(p.x,p.y,p.z);g.rotation.y=Math.atan2(p.tx,p.tz);
    if(index===0){for(const z of [-2,2]){softBox(.7,3.1,.7,stone,0,1.4,z,g,true);mesh(new T.ConeGeometry(.58,.9,8),gold,0,3.2,z,g);}tube([[0,2,-2],[0,3.6,0],[0,2,2]],.23,stone,g);}
    if(index===1){for(let j=0;j<5;j++){const x=side*(.3+j*.12),z=(j-2)*.65;strut([x,0,z],[x,.4+j*.09,z],.06,mat(0x807868),g);ball(x,.4+j*.09,z,.5,.16,.44,mat(j%2?0x5d9278:0x9b7b55),g,true);}for(let j=0;j<4;j++)tube([[0,.1,(j-2)*.55],[side*.8,-1.5,j*.5],[side*1.1,-3.1,j*.7]],.07,mat(0x394e3c),g);}
    if(index===2){softBox(.65,.35,4.5,mat(0xdae5e7,{roughness:.92}),0,.19,0,g,true);for(let j=0;j<6;j++){const icicle=mesh(new T.ConeGeometry(.12,.7+j%3*.35,20),mat(0x97cfe4,{metalness:.25,roughness:.12}),side*.22,-.3-j%3*.15,(j-2.5)*.6,g);icicle.rotation.z=Math.PI;}tube([[0,0,0],[side*.3,3,0],[-side*1.4,4.9,0]],.24,mat(0xb3d5e3,{roughness:.24}),g);}

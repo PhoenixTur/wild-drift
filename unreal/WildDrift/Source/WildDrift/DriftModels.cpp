@@ -11,6 +11,13 @@
 #include "Dom/JsonObject.h"
 static FVector Vector(const TArray<TSharedPtr<FJsonValue>>& A){return FVector(A[0]->AsNumber(),A[1]->AsNumber(),A[2]->AsNumber());}
 static FLinearColor Color(const TArray<TSharedPtr<FJsonValue>>& A){return FLinearColor(A[0]->AsNumber(),A[1]->AsNumber(),A[2]->AsNumber());}
+// Baked meshes have split vertices. Accumulate UV tangents in linear time; the
+// engine helper searches every coincident vertex and is quadratic on terrain.
+static void MakeTangents(FDriftMesh& M){
+ TArray<FVector> X,Y;X.Init(FVector::ZeroVector,M.Vertices.Num());Y=X;
+ for(int I=0;I<M.Indices.Num();I+=3){int A=M.Indices[I],B=M.Indices[I+1],C=M.Indices[I+2];FVector E=M.Vertices[B]-M.Vertices[A],F=M.Vertices[C]-M.Vertices[A];FVector2D U=M.UVs[B]-M.UVs[A],V=M.UVs[C]-M.UVs[A];double D=U.X*V.Y-U.Y*V.X;if(FMath::Abs(D)<1e-10)continue;FVector TX=(E*V.Y-F*U.Y)/D,TY=(F*U.X-E*V.X)/D;for(int J:{A,B,C}){X[J]+=TX;Y[J]+=TY;}}
+ for(int I=0;I<X.Num();I++){FVector N=M.Normals[I].GetSafeNormal(),TX=(X[I]-N*FVector::DotProduct(N,X[I])).GetSafeNormal();if(TX.IsNearlyZero())TX=FVector::CrossProduct(N,FMath::Abs(N.Z)<.9?FVector::UpVector:FVector::ForwardVector).GetSafeNormal();M.Tangents.Add(FProcMeshTangent(TX,FVector::DotProduct(FVector::CrossProduct(N,TX),Y[I])<0));}
+}
 AWildDriftModel::AWildDriftModel(){RootComponent=CreateDefaultSubobject<USceneComponent>(TEXT("Root"));}
 USceneComponent* AWildDriftModel::Find(const FString& Name)const{for(const auto& P:Parts)if(P.Name==Name)return P.Component;return nullptr;}
 TSharedPtr<FJsonObject> AWildDriftGameMode::ReadJson(const FString& File) const {
@@ -18,6 +25,9 @@ TSharedPtr<FJsonObject> AWildDriftGameMode::ReadJson(const FString& File) const 
 }
 void AWildDriftGameMode::Fail(const FString& Message){Error=Message;UE_LOG(LogTemp,Error,TEXT("WildDrift: %s"),*Message);}
 void AWildDriftGameMode::LoadMaterials(){
+ TMap<FString,UTexture2D*> Loaded;
+ auto Import=[&](const FString& File,bool Linear){const FString Key=File+(Linear?TEXT("-linear"):TEXT("-color"));if(auto* Old=Loaded.Find(Key))return *Old;auto* Texture=FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir()/TEXT("PortData")/File);if(Texture){Texture->SRGB=!Linear;Texture->AddressX=TA_Wrap;Texture->AddressY=TA_Wrap;Texture->UpdateResource();Textures.Add(Texture);Loaded.Add(Key,Texture);}else Fail(TEXT("Missing texture: ")+File);return Texture;};
+ for(int I=1;I<=4;I++)ItemIcons.Add(Import(FString::Printf(TEXT("icons/%d.png"),I),false));
  const auto& Data=Catalog->GetArrayField(TEXT("materials"));
  for(const auto& Value:Data){auto J=Value->AsObject();bool Transparent=J->GetBoolField(TEXT("transparent")),Unlit=J->GetBoolField(TEXT("unlit"));
   FString Path=Transparent?TEXT("/Game/Materials/M_Transparent.M_Transparent"):Unlit?TEXT("/Game/Materials/M_Unlit.M_Unlit"):TEXT("/Game/Materials/M_Surface.M_Surface");
@@ -25,7 +35,8 @@ void AWildDriftGameMode::LoadMaterials(){
   auto* Mat=UMaterialInstanceDynamic::Create(Base,this);Mat->SetVectorParameterValue(TEXT("Tint"),Color(J->GetArrayField(TEXT("color"))));Mat->SetVectorParameterValue(TEXT("Glow"),Color(J->GetArrayField(TEXT("emissive")))*J->GetNumberField(TEXT("emissiveIntensity")));
   Mat->SetScalarParameterValue(TEXT("Metallic"),J->GetNumberField(TEXT("metalness")));Mat->SetScalarParameterValue(TEXT("Roughness"),FMath::Max(.16,J->GetNumberField(TEXT("roughness"))));Mat->SetScalarParameterValue(TEXT("Opacity"),J->GetNumberField(TEXT("opacity")));
   auto Repeat=J->GetArrayField(TEXT("repeat"));Mat->SetVectorParameterValue(TEXT("Repeat"),FLinearColor(Repeat[0]->AsNumber(),Repeat[1]->AsNumber(),0,0));FString Tex;
-  if(J->TryGetStringField(TEXT("texture"),Tex)&&!Tex.IsEmpty()){auto* Texture=FImageUtils::ImportFileAsTexture2D(FPaths::ProjectContentDir()/TEXT("PortData/textures")/(Tex+TEXT(".png")));if(Texture){Texture->AddressX=TA_Wrap;Texture->AddressY=TA_Wrap;Texture->UpdateResource();Textures.Add(Texture);Mat->SetTextureParameterValue(TEXT("Albedo"),Texture);Mat->SetScalarParameterValue(TEXT("UseTexture"),1);}}
+  for(const TCHAR* Field:{TEXT("texture"),TEXT("detail")})if(J->TryGetStringField(Field,Tex)&&!Tex.IsEmpty()){bool Detail=FString(Field)==TEXT("detail");auto* Texture=Import(TEXT("textures")/(Tex+TEXT(".png")),Detail);if(Texture){Mat->SetTextureParameterValue(Detail?TEXT("Detail"):TEXT("Albedo"),Texture);Mat->SetScalarParameterValue(Detail?TEXT("UseDetail"):TEXT("UseTexture"),1);}}
+
   Materials.Add(Mat);
  }
 }
@@ -41,7 +52,7 @@ TSharedPtr<FDriftMesh> AWildDriftGameMode::LoadMesh(const FString& Id){
 USceneComponent* AWildDriftGameMode::LoadNode(AWildDriftModel* Owner,const TSharedPtr<FJsonObject>& J,USceneComponent* Parent){
  FString Id;bool Sprite=false;J->TryGetBoolField(TEXT("sprite"),Sprite);USceneComponent* C;TSharedPtr<FDriftMesh> M;
  if(J->TryGetStringField(TEXT("geometry"),Id)||Sprite){auto* Mesh=NewObject<UProceduralMeshComponent>(Owner);C=Mesh;Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);Mesh->bUseAsyncCooking=true;Mesh->SetCastShadow(!Sprite&&J->GetBoolField(TEXT("shadow")));if(Sprite){M=MakeShared<FDriftMesh>();M->Vertices={{-.5,-.5,0},{.5,-.5,0},{.5,.5,0},{-.5,.5,0}};M->Normals.Init(FVector(0,0,1),4);M->UVs={{0,1},{1,1},{1,0},{0,0}};M->Colors.Init(FLinearColor::White,4);M->Indices={0,2,1,0,3,2};Mesh->SetCastShadow(false);}else M=LoadMesh(Id);
-  if(M)Mesh->CreateMeshSection_LinearColor(0,M->Vertices,M->Indices,M->Normals,M->UVs,M->Colors,TArray<FProcMeshTangent>(),false);
+  if(M){if(!M->Tangents.Num()&&J->GetIntegerField(TEXT("material"))>=0){auto MatData=Catalog->GetArrayField(TEXT("materials"))[J->GetIntegerField(TEXT("material"))]->AsObject();FString Detail;if(MatData->TryGetStringField(TEXT("detail"),Detail)){MakeTangents(*M);}}Mesh->CreateMeshSection_LinearColor(0,M->Vertices,M->Indices,M->Normals,M->UVs,M->Colors,M->Tangents,false);}
   int Index=J->GetIntegerField(TEXT("material"));if(Materials.IsValidIndex(Index))Mesh->SetMaterial(0,Materials[Index]);
  }else C=NewObject<USceneComponent>(Owner);
  Owner->AddInstanceComponent(C);C->SetupAttachment(Parent);C->SetMobility(EComponentMobility::Movable);const auto& Q=J->GetArrayField(TEXT("rotation"));FTransform Transform(FQuat(Q[0]->AsNumber(),Q[1]->AsNumber(),Q[2]->AsNumber(),Q[3]->AsNumber()),Vector(J->GetArrayField(TEXT("position"))),Vector(J->GetArrayField(TEXT("scale"))));C->SetRelativeTransform(Transform);C->SetVisibility(J->GetBoolField(TEXT("visible")));C->RegisterComponent();FString Name=J->GetStringField(TEXT("name"));if(Sprite)Name=TEXT("sprite:")+Name;Owner->Parts.Add({C,Transform,Name,M});for(const auto& Child:J->GetArrayField(TEXT("children")))LoadNode(Owner,Child->AsObject(),C);if(!J->GetBoolField(TEXT("visible")))C->SetVisibility(false,true);return C;

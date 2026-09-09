@@ -9,13 +9,14 @@
 // This integration check drives the real PlayerController input path and the real JSON save/load code.
 // Its progress file is separate from the player's profile.
 void AWildDriftGameMode::VerifyInput(){
- auto* PC=GetWorld()->GetFirstPlayerController();auto& P=Race.racers[0];const double T=Clock;
+ auto* PC=GetWorld()->GetFirstPlayerController();auto& P=Race.racers[0];// macOS establishes window focus after BeginPlay and may flush the first key event.
+ const double T=Clock-1.;if(T<0)return;
  const FKey Keys[]={EKeys::W,EKeys::D,EKeys::SpaceBar,EKeys::R,EKeys::C,EKeys::Escape,EKeys::LeftShift};
- const bool Down[]={T<1.9,T>1.15&&T<1.37,T>1.15&&T<1.37,T>2.1&&T<2.3,T>3.3&&T<3.8,(T>4.5&&T<4.7)||(T>5.1&&T<5.3),T>6.3&&T<6.5};
+ const bool Down[]={T<1.9,T>1.15&&T<1.37,T>1.15&&T<1.37,T>2.1&&T<2.3,T>3.3&&T<3.8,(T>4.5&&T<4.7)||(T>5.1&&T<5.3)||(T>25.1&&T<25.3),T>6.3&&T<6.5};
  for(int I=0;I<7;I++)if(Down[I]!=VerifyKeys[I]){PC->InputKey(FInputKeyEventArgs(nullptr,IPlatformInputDeviceMapper::Get().GetDefaultInputDevice(),Keys[I],Down[I]?IE_Pressed:IE_Released,Down[I]?1.f:0.f,false,FPlatformTime::Cycles64()));VerifyKeys[I]=Down[I];}
  auto Require=[this](bool OK,const TCHAR* Message){if(!OK){Fail(FString(TEXT("Verification: "))+Message);FPlatformMisc::RequestExitWithStatus(false,1);}return OK;};
  auto Capture=[this](const TCHAR* Name){FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots")/(FString(Name)+TEXT(".png")),true,false);};
- if(VerifyStage==0&&T>1.05){if(!Require(P.speed>15,TEXT("W did not accelerate")))return;VerifyYaw=P.yaw;VerifyStage++;}
+ if(VerifyStage==0&&T>1.05){if(P.speed<=15)UE_LOG(LogTemp,Error,TEXT("Verify acceleration: speed=%.3f W=%d race=%d paused=%d countdown=%.3f phase=%d"),P.speed,PC->IsInputKeyDown(EKeys::W),Racing,Paused,Countdown,int(P.phase));if(!Require(P.speed>15,TEXT("W did not accelerate")))return;VerifyYaw=P.yaw;VerifyStage++;}
  if(VerifyStage==1&&T>1.85){if(!Require(FMath::Abs(drift::angle(P.yaw-VerifyYaw))>.1,TEXT("D did not steer")))return;VerifyStage++;}
  if(VerifyStage==2&&T>3.15){if(!Require(P.falls>0&&P.phase==drift::Phase::Respawning&&P.speed<2.1&&FMath::Abs(P.lane)<.01,TEXT("R did not respawn at road centre with reduced speed")))return;VerifyStage++;}
  if(VerifyStage==3&&T>3.6){if(!Require(PC->IsInputKeyDown(EKeys::C),TEXT("C was not held")))return;Capture(TEXT("NativeRearView"));VerifyStage++;}
@@ -36,7 +37,12 @@ void AWildDriftGameMode::VerifyInput(){
  if(VerifyStage==18&&T>14.7){Capture(TEXT("NativeNineRacers"));VerifyStage++;}
  if(VerifyStage==19&&T>15.4){Laps=1;Opponents=0;StartRace();if(!Require(Race.lapCount==1&&Karts.Num()==1,TEXT("solo race settings failed")))return;Race.racers[0].item=drift::Item::Bomb;VerifyStage++;return;}
  if(VerifyStage==20&&T>16){if(!Require(Race.aim()==-1&&!Cast<AWildDriftHUD>(PC->GetHUD())->TargetVisible,TEXT("solo race acquired a phantom target")))return;Capture(TEXT("NativeSolo"));VerifyStage++;}
- if(VerifyStage==21&&T>16.7){Racing=false;ShowMenu();VerifyStage++;}
- if(VerifyStage==22&&T>17.3){Capture(TEXT("NativeRaceSettings"));VerifyStage++;}
- if(VerifyStage==23&&T>18){UE_LOG(LogTemp,Display,TEXT("WILDDRIFT_INPUT_OK controls, targeting, no-target HUD, bonus panel, solo/9-racer races, 1/10 laps, jump, landing and persistence"));FPlatformMisc::RequestExit(false);}
+ if(VerifyStage==21&&T>16.7){Racing=false;CreateKarts();ShowMenu();VerifyStage++;}
+ if(VerifyStage==22&&T>17.3){Capture(TEXT("NativeMainMenu"));VerifyStage++;}
+ for(int Page=1;Page<=5;Page++){
+  if(VerifyStage==23+(Page-1)*2&&T>18+(Page-1)*1.5){MenuPage=Page;ShowMenu();if(!Require(Menu.IsValid()&&MenuPage==Page,TEXT("submenu did not open")))return;VerifyStage++;}
+  if(VerifyStage==24+(Page-1)*2&&T>18.7+(Page-1)*1.5){const FString Name=FString::Printf(TEXT("NativeMenu-%d"),Page);Capture(*Name);VerifyStage++;}
+ }
+ if(VerifyStage==33&&T>25.6){if(!Require(MenuPage==0,TEXT("Escape did not close submenu")))return;Capture(TEXT("NativeMainMenu"));VerifyStage++;}
+ if(VerifyStage==34&&T>26.4){UE_LOG(LogTemp,Display,TEXT("WILDDRIFT_INPUT_OK controls, reticle, compact item HUD, solo/9-racer races, 1/10 laps, jump, five menu dialogs, Escape navigation and persistence"));FPlatformMisc::RequestExit(false);}
 }
